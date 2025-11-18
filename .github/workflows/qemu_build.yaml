@@ -50,14 +50,14 @@ jobs:
           cd qemu_source
           printf %s "$CONFIG" | xargs ./configure
           make -j$(nproc)
-          make install
+          make install DESTDIR="/tmp/qemu_build"
        
-      - name: Package Qemu artifacts
-        run:
-          tar czf qemu_artifacts.tar.gz /opt/urunc
+      #- name: Package Qemu artifacts
+      #  run:
+      #    tar czf qemu_artifacts.tar.gz /opt/urunc
        
       - name: Archive Qemu artifacts
         uses: actions/upload-artifact@v4
         with:
           name: qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}
-          path: qemu_artifacts.tar.gz
+          path: /tmp/qemu_build
