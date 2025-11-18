@@ -49,7 +49,7 @@ jobs:
           git clone -b ${{ inputs.qemu_version }} https://github.com/qemu/qemu.git --depth=1 qemu_source
           cd qemu_source
           printf %s "$CONFIG" | xargs ./configure
-          make
+          make -j$(nproc)
           make install
        
       - name: Package Qemu artifacts
