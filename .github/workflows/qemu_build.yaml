@@ -1,0 +1,68 @@
+name: Build Qemu
+
+on:
+  workflow_dispatch:
+    inputs:
+      qemu_version:
+        description: 'Qemu version to build'
+        type: string
+        required: false
+        default: 'v10.1.1'
+      arch:
+        description: 'The CPU architecture to build Solo5'
+        type: string
+        required: false
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        description: 'Mapping of CPU architecture to runner names'
+        type: string
+        required: false
+        default: '{"amd64":"ubuntu-24.04", "arm64":"ubuntu-24.04-arm"}'
+
+jobs:
+  build-Qemu:
+    name: Build Qemu static binaries
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(inputs.arch) }}
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[matrix.arch] }}
+    steps:
+
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install base dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential ninja-build libglib2.0-dev libaio-dev liburing-dev libseccomp-dev libcap-ng-dev librados-dev
+
+      - name: Fetch configure and build Qemu
+        run: |
+          CONFIG=$( cat qemu/${{ matrix.arch }}.config )
+          git clone -b ${{ inputs.qemu_version }} https://github.com/qemu/qemu.git --depth=1 qemu_source
+          cd qemu_source
+          printf %s "$CONFIG" | xargs ./configure
+          make -j$(nproc)
+          make install DESTDIR="/tmp/qemu_build"
+       
+      - name: Remove unncessary files
+        run: |
+          source qemu/unnecessary_files.txt
+          cd /tmp/qemu_build
+          for pattern in "${qemu_black_list[@]}"
+          do
+            find . -path "$pattern" | xargs rm -rfv
+          done
+       
+      - name: Archive Qemu artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}
+          path: /tmp/qemu_build
