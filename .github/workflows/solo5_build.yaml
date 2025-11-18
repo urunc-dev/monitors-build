@@ -1,0 +1,59 @@
+name: Build Solo5 binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      solo5_version:
+        description: 'Solo5 version to build'
+        type: string
+        required: false
+        default: 'v0.9.3'
+      arch:
+        description: 'The CPU architecture to build Solo5'
+        type: string
+        required: false
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        description: 'Mapping of CPU architecture to runner names'
+        type: string
+        required: false
+        default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
+
+jobs:
+  build-Solo5:
+    name: Build Solo5 static binaries
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[inputs.arch] }}
+    steps:
+
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install base dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential libseccomp-dev pkg-config bc
+
+      - name: Build Solo5-hvt and Solo5-spt
+        run: |
+          git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git
+          cd solo5
+          ./configure.sh && make -j$(nproc)
+       
+      - name: Archive Solo5-hvt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solo5-hvt-${{ inputs.arch }}-${{ inputs.solo5_version }}
+          path: solo5/tenders/hvt/solo5-hvt
+       
+      - name: Archive Solo5-spt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solo5-spt-${{ inputs.arch }}-${{ inputs.solo5_version }}
+          path: solo5/tenders/hvt/solo5-spt
