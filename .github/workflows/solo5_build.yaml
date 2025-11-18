@@ -22,7 +22,10 @@ on:
 jobs:
   build-Solo5:
     name: Build Solo5 static binaries
-    runs-on: ${{ fromJSON(inputs.runner-arch-map)[inputs.arch] }}
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(inputs.arch) }}
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[matrix.arch] }}
     steps:
 
       - name: Harden the runner (Audit all outbound calls)
@@ -49,11 +52,11 @@ jobs:
       - name: Archive Solo5-hvt artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solo5-hvt-${{ inputs.arch }}-${{ inputs.solo5_version }}
+          name: solo5-hvt-${{ matrix.arch }}-${{ inputs.solo5_version }}
           path: solo5/tenders/hvt/solo5-hvt
        
       - name: Archive Solo5-spt artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solo5-spt-${{ inputs.arch }}-${{ inputs.solo5_version }}
+          name: solo5-spt-${{ matrix.arch }}-${{ inputs.solo5_version }}
           path: solo5/tenders/hvt/solo5-spt
