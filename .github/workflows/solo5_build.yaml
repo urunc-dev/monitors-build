@@ -47,6 +47,7 @@ jobs:
         run: |
           git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git
           cd solo5
+          sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
           ./configure.sh && make -j$(nproc)
        
       - name: Archive Solo5-hvt artifact
@@ -59,4 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: solo5-spt-${{ matrix.arch }}-${{ inputs.solo5_version }}
-          path: solo5/tenders/hvt/solo5-spt
+          path: solo5/tenders/spt/solo5-spt
