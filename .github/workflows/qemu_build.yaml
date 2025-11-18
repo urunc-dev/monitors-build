@@ -52,9 +52,14 @@ jobs:
           make -j$(nproc)
           make install DESTDIR="/tmp/qemu_build"
        
-      #- name: Package Qemu artifacts
-      #  run:
-      #    tar czf qemu_artifacts.tar.gz /opt/urunc
+      - name: Remove unncessary files
+        run: |
+          source qemu/unnecessary_files.txt
+          cd /tmp/qemu_build
+          for pattern in "${qemu_black_list[@]}"
+          do
+            find . -path "$pattern" | xargs rm -rfv
+          done
        
       - name: Archive Qemu artifacts
         uses: actions/upload-artifact@v4
