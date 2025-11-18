@@ -17,7 +17,7 @@ on:
         description: 'Mapping of CPU architecture to runner names'
         type: string
         required: false
-        default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
+        default: '{"amd64":"ubuntu-24.04", "arm64":"ubuntu-24.04-arm"}'
 
 jobs:
   build-Qemu:
