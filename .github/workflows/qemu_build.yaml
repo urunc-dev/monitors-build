@@ -45,10 +45,10 @@ jobs:
 
       - name: Fetch configure and build Qemu
         run: |
-          CONFIG=$( cat qemu/${{ matrix.arch }}.config | tr -d '\n' )
+          CONFIG=$( cat qemu/${{ matrix.arch }}.config )
           git clone -b ${{ inputs.qemu_version }} https://github.com/qemu/qemu.git --depth=1 qemu_source
           cd qemu_source
-          echo $CONFIG | xargs ./configure
+          printf %s "$CONFIG" | xargs ./configure
           make
           make install
        
