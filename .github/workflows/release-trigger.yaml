@@ -1,0 +1,100 @@
+name: Release Trigger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - qemu/
+      - solo5/
+      - firecracker/
+      - virtiofsd/
+  workflow_dispatch:
+
+jobs:
+  check-release-existance:
+    name: Check if release already exists
+    runs-on: ubuntu-latest
+    outputs: 
+      release: ${{ steps.release.outputs.name }}
+      exists: ${{ steps.check.outputs.exists }}
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Generate Qemu artifact name
+        id: name
+        run: |
+          QEMU_CONFIG=$( sort qemu/${{ matrix.arch }}.config )
+          QEMU_IGNORE_LIST=$( sort qemu/unnecessary_files.txt )
+          QEMU_FILES_HASH=$( echo $QEMU_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
+          echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
+          echo "full=qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
+
+      - name: Generate release name
+        id: release
+        run: |
+          SHORT_HASH=$(echo ${{ steps.name.outputs.hash }} | cut -c1-5)
+          echo "name=FC-${{ inputs.fc_version }}_S5-${{ inputs.solo5_version }}_QM-${{ inputs.qemu_version }}-${SHORT_HASH}" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists
+        id: check
+        run: |
+          RELEASES=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                      "https://api.github.com/repos/${{ github.repository }}/releases" \
+                      | jq -r '.[].name'
+          if echo "$RELEASES" | grep -q "${{ steps.release.outputs.name }}"
+          then
+            echo "Release already exists! Skipping creation."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release does not exist! Let's create it."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  tag-parent: 
+    name: Tag Parent Repository
+    runs-on: ubuntu-latest
+    needs: [check-release-existance]
+    permissions:
+      contents: write
+    if: needs.check-release-existance.outputs.exists == 'false'
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Tag Parent Repository
+        uses: gntouts/tag-remote-repo-action@b3c9868dbb01f9ea3875289e783d1a2478b7ea88 # v1.0.0
+        id: tag_parent
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ needs.check-release-existance.outputs.release }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          skip_update: true
+
+      - name: Log outputs
+        env:
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{steps.tag_parent.outputs.tag}}
+          RESULT: ${{ steps.tag_parent.outputs.result }}
+          MESSAGE: ${{ steps.tag_parent.outputs.message }}
+          TAG: ${{ steps.tag_parent.outputs.tag }}
+          COMMIT: ${{ steps.tag_parent.outputs.commit }}
+        run: |
+          echo "Repository: $REPOSITORY"
+          echo "Version: $VERSION"
+          echo "Result: $RESULT"
+          echo "Message: $MESSAGE"
+          echo "Tag: $TAG"
+          echo "Commit: $COMMIT"
