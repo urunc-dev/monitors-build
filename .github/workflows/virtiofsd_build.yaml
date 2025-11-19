@@ -1,7 +1,7 @@
 name: Build Virtiofsd
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       virtiofsd_version:
         description: 'Virtiofsd version to build'
