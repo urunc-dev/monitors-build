@@ -38,17 +38,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Generate Qemu artifact name
+        id: name
+        run: |
+          QEMU_CONFIG=$( sort qemu/${{ matrix.arch }}.config )
+          QEMU_IGNORE_LIST=$( sort qemu/unnecessary_files.txt )
+          QEMU_FILES_HASH=$( echo $QEMU_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
+          echo "full=qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
+
       - name: Check if Qemu artifacts exist
         id: check
         run: |
-          EXPECTED_QEMU_ARTIFACT="qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}"
           ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
                       -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                       "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
                       | jq -r '.workflow_runs[].artifacts_url' \
                       | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
                       | jq -r '.artifacts[].name')
-          if echo "$ARTIFACTS" | grep -q "$EXPECTED_QEMU_ARTIFACT"
+          if echo "$ARTIFACTS" | grep -q "${{ steps.name.outputs.full }}"
           then
             echo "Qemu artifacts already exist! Skipping build."
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -87,5 +96,5 @@ jobs:
         if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
-          name: qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}
+          name: ${{ steps.name.outputs.full }}
           path: /tmp/qemu_build
