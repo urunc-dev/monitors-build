@@ -38,12 +38,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check if Qemu artifacts exist
+        id: check
+        run: |
+          EXPECTED_QEMU_ARTIFACT="qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}"
+          ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                      "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
+                      | jq -r '.workflow_runs[].artifacts_url' \
+                      | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
+                      | jq -r '.artifacts[].name')
+          if echo "$ARTIFACTS" | grep -q "$EXPECTED_QEMU_ARTIFACT"
+          then
+            echo "Qemu artifacts already exist! Skipping build."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Qemu artifacts do not exist! Let's build them"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install base dependencies
+        if: ${{ steps.check.outputs.exists == 'false' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y git build-essential ninja-build libglib2.0-dev libaio-dev liburing-dev libseccomp-dev libcap-ng-dev librados-dev
 
       - name: Fetch configure and build Qemu
+        if: ${{ steps.check.outputs.exists == 'false' }}
         run: |
           CONFIG=$( cat qemu/${{ matrix.arch }}.config )
           git clone -b ${{ inputs.qemu_version }} https://github.com/qemu/qemu.git --depth=1 qemu_source
@@ -53,6 +74,7 @@ jobs:
           make install DESTDIR="/tmp/qemu_build"
        
       - name: Remove unncessary files
+        if: ${{ steps.check.outputs.exists == 'false' }}
         run: |
           source qemu/unnecessary_files.txt
           cd /tmp/qemu_build
@@ -62,6 +84,7 @@ jobs:
           done
        
       - name: Archive Qemu artifacts
+        if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}
