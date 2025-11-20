@@ -60,11 +60,14 @@ jobs:
       - name: Map arch names
         id: arch_map
         run: |
-          if [ ${{ matrix.arch }} == "amd64" }} ]
+          if [ ${{ matrix.arch }} == "amd64" ]
           then
             echo "toolchain_arch=x86_64" >> $GITHUB_OUTPUT
-          elif [ ${{ matrix.arch }} == "arm64" }} ]
+          elif [ ${{ matrix.arch }} == "arm64" ]
+          then
             echo "toolchain_arch=aarch64" >> $GITHUB_OUTPUT
+          else
+            exit 1
           fi
 
       - name: Install base dependencies
