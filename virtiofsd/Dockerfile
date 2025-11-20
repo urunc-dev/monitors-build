@@ -10,6 +10,8 @@ RUN apk add --no-cache \
 	git \
 	openssl-dev
 
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+
 WORKDIR /workspace
 
 ENTRYPOINT ["/bin/sh", "-c"]
