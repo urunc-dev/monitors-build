@@ -1,0 +1,5 @@
+name: "Virtiofsd Static Builder"
+description: "Provide an environment for virtiofsd building as a static MUSL binary using Alpine"
+runs:
+  using: "docker"
+  image: "Dockerfile"

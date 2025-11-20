@@ -1,0 +1,98 @@
+name: Build Virtiofsd
+
+on:
+  workflow_dispatch:
+    inputs:
+      virtiofsd_version:
+        description: 'Virtiofsd version to build'
+        type: string
+        required: false
+        default: 'v1.13.1'
+      arch:
+        description: 'The CPU architecture to build Solo5'
+        type: string
+        required: false
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        description: 'Mapping of CPU architecture to runner names'
+        type: string
+        required: false
+        default: '{"amd64":"ubuntu-24.04", "arm64":"ubuntu-24.04-arm"}'
+
+jobs:
+  build-Qemu:
+    name: Build Virtiofsd static binaries
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(inputs.arch) }}
+    runs-on: ${{ fromJSON(inputs.runner-arch-map)[matrix.arch] }}
+    steps:
+
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Check if Virtiofsd artifacts exist
+        id: check
+        run: |
+          EXPECTED_VIRTIOFSD_ARTIFACT="virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}"
+          ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                      "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
+                      | jq -r '.workflow_runs[].artifacts_url' \
+                      | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
+                      | jq -r '.artifacts[].name')
+          if echo "$ARTIFACTS" | grep -q "$EXPECTED_VIRTIOFSD_ARTIFACT"
+          then
+            echo "Virtiofsd artifact already exists! Skipping build."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Virtiofsd artifact does not exist! Let's build them"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Map arch names
+        id: arch_map
+        run: |
+          if [ ${{ matrix.arch }} == "amd64" ]
+          then
+            echo "target=x86_64-unknown-linux-musl" >> $GITHUB_OUTPUT
+          elif [ ${{ matrix.arch }} == "arm64" ]
+          then
+            echo "target=aarch64-unknown-linux-musl" >> $GITHUB_OUTPUT
+          else
+            exit 1
+          fi
+
+      - name: Fetch and build Virtiofsd
+        if: ${{ steps.check.outputs.exists == 'false' }}
+        uses: ./virtiofsd
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
+          LIBSECCOMP_LINK_TYPE: "static"
+          LIBSECCOMP_LIB_PATH: "/usr/lib"
+          LIBCAPNG_LINK_TYPE: "static"
+          LIBCAPNG_LIB_PATH: "/usr/lib"
+          TARGET: ${{ steps.arch_map.outputs.target }}
+          VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version }}
+        with:
+          args: |
+            set -eux
+            rustup target add "$TARGET"
+            git clone -b "$VIRTIOFSD_VERSION" https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
+            cd virtiofsd_source
+            cargo build --release --target "$TARGET"
+            cp target/"$TARGET"/release/virtiofsd /github/workspace/virtiofsd_static
+       
+      - name: Archive Virtiofsd artifacts
+        if: ${{ steps.check.outputs.exists == 'false' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}
+          path: virtiofsd_static
