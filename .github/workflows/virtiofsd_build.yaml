@@ -83,7 +83,6 @@ jobs:
           VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version }}
         with:
           args: |
-            rustup target add "$TARGET"
             git clone -b "$VIRTIOFSD_VERSION" https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
             cd virtiofsd_source
             cargo build --release --target "$TARGET"
