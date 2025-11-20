@@ -82,9 +82,7 @@ jobs:
         env:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
           LIBSECCOMP_LINK_TYPE: "static"
-          LIBSECCOMP_LIB_PATH: "/usr/lib"
           LIBCAPNG_LINK_TYPE: "static"
-          LIBCAPNG_LIB_PATH: "/usr/lib"
         run: |
           git clone -b ${{ inputs.virtiofsd_version }} https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
           cd virtiofsd_source
