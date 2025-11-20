@@ -52,8 +52,11 @@ jobs:
           if echo "$ARTIFACTS" | grep -q "$EXPECTED_HVT_ARTIFACT" && \
              echo "$ARTIFACTS" | grep -q "$EXPECTED_SPT_ARTIFACT"
           then
-            echo "Solo5-hvt artifact already exists! Skipping build."
+            echo "Solo5 artifacts already exist! Skipping build."
             echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Solo5 artifacts do not exist! Let's build them"
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build Solo5-hvt and Solo5-spt
