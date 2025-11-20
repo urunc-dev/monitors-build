@@ -56,30 +56,31 @@ jobs:
             echo "exists=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install base dependencies
-        if: ${{ steps.check.outputs.exists == 'false' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git build-essential libseccomp-dev pkg-config bc
-
       - name: Build Solo5-hvt and Solo5-spt
         if: ${{ steps.check.outputs.exists == 'false' }}
-        run: |
-          git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git
-          cd solo5
-          sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
-          ./configure.sh && make -j$(nproc)
+        uses: ./virtiofsd
+        env:
+          SOLO5_VERSION: ${{ inputs.solo5_version }}
+        with:
+          args: |
+            set -eux
+            git clone -b "$SOLO5_VERSION https://github.com/Solo5/solo5.git
+            cd solo5
+            sed -i '66 a\HOSTLDFLAGS += -static' tenders/GNUmakefile
+            ./configure.sh && make -j$(nproc)
+            cp tenders/hvt/solo5-hvt /github/workspace/solo5/
+            cp tenders/spt/solo5-spt /github/workspace/solo5/
        
       - name: Archive Solo5-hvt artifact
         if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: solo5-hvt-${{ matrix.arch }}-${{ inputs.solo5_version }}
-          path: solo5/tenders/hvt/solo5-hvt
+          path: solo5/solo5-hvt
        
       - name: Archive Solo5-spt artifact
         if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: solo5-spt-${{ matrix.arch }}-${{ inputs.solo5_version }}
-          path: solo5/tenders/spt/solo5-spt
+          path: solo5/solo5-spt

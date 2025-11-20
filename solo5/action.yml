@@ -1,0 +1,5 @@
+name: "Solo5 Static Builder"
+description: "Provide an environment for Solo5 building as a static binary using Alpine"
+runs:
+  using: "docker"
+  image: "Dockerfile"
