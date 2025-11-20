@@ -8,9 +8,12 @@ RUN apk add --no-cache \
 	libseccomp-static \
 	libcap-ng-static \
 	git \
+	curl \
 	openssl-dev
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+ENV PATH="${PATH}:/root/.cargo/bin"
 
 WORKDIR /workspace
 
