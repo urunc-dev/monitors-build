@@ -72,7 +72,7 @@ jobs:
 
       - name: Fetch and build Virtiofsd
         if: ${{ steps.check.outputs.exists == 'false' }}
-        uses: ./virtiofsd/action.yml
+        uses: ./virtiofsd
         env:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
           LIBSECCOMP_LINK_TYPE: "static"
