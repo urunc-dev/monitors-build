@@ -73,8 +73,8 @@ jobs:
       - name: Install base dependencies
         if: ${{ steps.check.outputs.exists == 'false' }}
         run: |
-          apt-get update
-          apt-get install -y git libcap-ng-dev libseccomp-dev musl-tools
+          sudo apt-get update
+          sudo apt-get install -y git libcap-ng-dev libseccomp-dev musl-tools
           rustup target add ${{ steps.arch_map.outputs.toolchain_arch }}-unknown-linux-musl
 
       - name: Fetch and build Virtiofsd
