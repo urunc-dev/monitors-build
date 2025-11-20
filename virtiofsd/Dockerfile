@@ -17,4 +17,5 @@ ENV PATH="${PATH}:/root/.cargo/bin"
 
 WORKDIR /workspace
 
-ENTRYPOINT ["/bin/sh", "-c"]
+#ENTRYPOINT ["/bin/sh", "-c"]
+ENTRYPOINT ["/bin/sh", "-c", "echo \"$*\" | /bin/sh", "--"]
