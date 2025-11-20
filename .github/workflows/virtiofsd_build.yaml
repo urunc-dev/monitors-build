@@ -3,7 +3,7 @@ name: Build Virtiofsd
 on:
   workflow_dispatch:
     inputs:
-      qemu_version:
+      virtiofsd_version:
         description: 'Virtiofsd version to build'
         type: string
         required: false
