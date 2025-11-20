@@ -61,7 +61,7 @@ jobs:
 
       - name: Build Solo5-hvt and Solo5-spt
         if: ${{ steps.check.outputs.exists == 'false' }}
-        uses: ./virtiofsd
+        uses: ./solo5
         env:
           SOLO5_VERSION: ${{ inputs.solo5_version }}
         with:
