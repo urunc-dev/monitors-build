@@ -67,8 +67,8 @@ jobs:
         with:
           args: |
             set -eux
-            git clone -b "$SOLO5_VERSION https://github.com/Solo5/solo5.git
-            cd solo5
+            git clone -b "$SOLO5_VERSION https://github.com/Solo5/solo5.git solo5_source
+            cd solo5_source
             sed -i '66 a\HOSTLDFLAGS += -static' tenders/GNUmakefile
             ./configure.sh && make -j$(nproc)
             cp tenders/hvt/solo5-hvt /github/workspace/solo5/
