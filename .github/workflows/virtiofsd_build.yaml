@@ -80,7 +80,7 @@ jobs:
           LIBCAPNG_LINK_TYPE: "static"
           LIBCAPNG_LIB_PATH: "/usr/lib"
           TARGET: ${{ steps.arch_map.outputs.target }}
-          VIRTIOFSD_VERSION: ${{ input.virtiofsd_version }}
+          VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version }}
         with:
           args: |
             rustup target add "$TARGET"
