@@ -9,7 +9,8 @@ RUN apk add --no-cache \
 	curl \
 	openssl-dev
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+	/root/.cargo/bin/rustup default stable
 
 ENV PATH="${PATH}:/root/.cargo/bin"
 
