@@ -62,35 +62,36 @@ jobs:
         run: |
           if [ ${{ matrix.arch }} == "amd64" ]
           then
-            echo "toolchain_arch=x86_64" >> $GITHUB_OUTPUT
+            echo "target=x86_64-unknown-linux-musl" >> $GITHUB_OUTPUT
           elif [ ${{ matrix.arch }} == "arm64" ]
           then
-            echo "toolchain_arch=aarch64" >> $GITHUB_OUTPUT
+            echo "target=aarch64-unknown-linux-musl" >> $GITHUB_OUTPUT
           else
             exit 1
           fi
 
-      - name: Install base dependencies
-        if: ${{ steps.check.outputs.exists == 'false' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git libcap-ng-dev libseccomp-dev musl-tools
-          rustup target add ${{ steps.arch_map.outputs.toolchain_arch }}-unknown-linux-musl
-
       - name: Fetch and build Virtiofsd
         if: ${{ steps.check.outputs.exists == 'false' }}
+        uses: ./virtiofsd/action.yml
         env:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
           LIBSECCOMP_LINK_TYPE: "static"
+          LIBSECCOMP_LIB_PATH: "/usr/lib"
           LIBCAPNG_LINK_TYPE: "static"
-        run: |
-          git clone -b ${{ inputs.virtiofsd_version }} https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
-          cd virtiofsd_source
-          cargo build --release --target ${{ steps.arch_map.outputs.toolchain_arch }}-unknown-linux-musl
+          LIBCAPNG_LIB_PATH: "/usr/lib"
+          TARGET: ${{ steps.arch_map.outputs.target }}
+          VIRTIOFSD_VERSION: ${{ input.virtiofsd_version }}
+        with:
+          args: |
+            rustup target add "$TARGET"
+            git clone -b "$VIRTIOFSD_VERSION" https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
+            cd virtiofsd_source
+            cargo build --release --target "$TARGET"
+            cp target/"$TARGET"/release/virtiofsd /github/workspace/
        
       - name: Archive Virtiofsd artifacts
         if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}
-          path: target/${{ steps.arch_map.outputs.toolchain_arch }}-unknown-linux-musl/release/virtiofsd
+          path: virtiofsd
