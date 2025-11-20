@@ -19,7 +19,7 @@ RUN apk --no-cache add \
         libcap-ng-static \
         libseccomp-static \
         musl-dev && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.1
 
 RUN ARCH=$(uname -m); \
     	rust_arch=""; \
