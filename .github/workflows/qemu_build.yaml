@@ -42,9 +42,10 @@ jobs:
       - name: Generate Qemu artifact name
         id: name
         run: |
-          QEMU_CONFIG=$( sort qemu/${{ matrix.arch }}.config )
+          QEMU_AMD64_CONFIG=$( sort qemu/amd64.config )
+          QEMU_ARM64_CONFIG=$( sort qemu/arm64.config )
           QEMU_IGNORE_LIST=$( sort qemu/unnecessary_files.txt )
-          QEMU_FILES_HASH=$( echo $QEMU_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
+          QEMU_FILES_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
           echo "exists=true" >> $GITHUB_OUTPUT
           echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
           echo "full=qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
