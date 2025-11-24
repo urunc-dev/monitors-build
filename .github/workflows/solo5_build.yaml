@@ -18,7 +18,6 @@ on:
         type: string
         required: false
         default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
-  workflow_dispatch:
 
 jobs:
   build-Solo5:
@@ -41,24 +40,10 @@ jobs:
 
       - name: Check if Solo5 artifacts exist
         id: check
-        run: |
-          EXPECTED_HVT_ARTIFACT="solo5-hvt-${{ matrix.arch }}-${{ inputs.solo5_version }}"
-          EXPECTED_SPT_ARTIFACT="solo5-spt-${{ matrix.arch }}-${{ inputs.solo5_version }}"
-          ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                      "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-                      | jq -r '.workflow_runs[].artifacts_url' \
-                      | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
-                      | jq -r '.artifacts[].name')
-          if echo "$ARTIFACTS" | grep -q "$EXPECTED_HVT_ARTIFACT" && \
-             echo "$ARTIFACTS" | grep -q "$EXPECTED_SPT_ARTIFACT"
-          then
-            echo "Solo5 artifacts already exist! Skipping build."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Solo5 artifacts do not exist! Let's build them"
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+        uses: ./.github/actions/get-artifact-info/
+        with:
+          name: "solo5-hvt-${{ matrix.arch }}-${{ inputs.solo5_version }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install base dependencies
         if: ${{ steps.check.outputs.exists == 'false' }}

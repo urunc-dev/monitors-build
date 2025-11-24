@@ -46,27 +46,15 @@ jobs:
           QEMU_ARM64_CONFIG=$( sort qemu/arm64.config )
           QEMU_IGNORE_LIST=$( sort qemu/unnecessary_files.txt )
           QEMU_FILES_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
-          echo "exists=true" >> $GITHUB_OUTPUT
           echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
           echo "full=qemu-${{ matrix.arch }}-${{ inputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
 
       - name: Check if Qemu artifacts exist
         id: check
-        run: |
-          ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                      "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-                      | jq -r '.workflow_runs[].artifacts_url' \
-                      | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
-                      | jq -r '.artifacts[].name')
-          if echo "$ARTIFACTS" | grep -q "${{ steps.name.outputs.full }}"
-          then
-            echo "Qemu artifacts already exist! Skipping build."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Qemu artifacts do not exist! Let's build them"
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+        uses: ./.github/actions/get-artifact-info/
+        with:
+          name: "${{ steps.name.outputs.full }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install base dependencies
         if: ${{ steps.check.outputs.exists == 'false' }}

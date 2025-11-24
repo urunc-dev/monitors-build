@@ -40,22 +40,10 @@ jobs:
 
       - name: Check if Virtiofsd artifacts exist
         id: check
-        run: |
-          EXPECTED_VIRTIOFSD_ARTIFACT="virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}"
-          ARTIFACTS=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                      "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-                      | jq -r '.workflow_runs[].artifacts_url' \
-                      | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" {} \
-                      | jq -r '.artifacts[].name')
-          if echo "$ARTIFACTS" | grep -q "$EXPECTED_VIRTIOFSD_ARTIFACT"
-          then
-            echo "Virtiofsd artifact already exists! Skipping build."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Virtiofsd artifact does not exist! Let's build them"
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
+        uses: ./.github/actions/get-artifact-info/
+        with:
+          name: "virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Map arch names
         id: arch_map

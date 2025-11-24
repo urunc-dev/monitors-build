@@ -1,0 +1,63 @@
+name: "Search and get artifact information"
+description: "Searches all non-expired artifacts with name <name-arch-version-hash>. If it is found it returns the workflow run ID, download_url and other info"
+inputs:
+  name:
+    description: 'Name of the artifact'
+    required: true
+  token:
+    description: 'Github token for requests to Github API'
+    required: false
+outputs:
+  name:
+    description: "The artifact name"
+    value: ${{ steps.get-artifact.outputs.name }}
+  exists:
+    description: "True if the artifact was found, false otherwise"
+    value: ${{ steps.get-artifact.outputs.exists }}
+  run_id:
+    description: "The run id of the workflow that generated the artifact"
+    value: ${{ steps.get-artifact.outputs.run_id }}
+  download_url:
+    description: "The download url of the respective artifact"
+    value: ${{ steps.get-artifact.outputs.download_url }}
+runs:
+  using: "composite"
+  steps:
+    - name: Get valid artifacts
+      id: get-artifact
+      shell: bash
+      run: |
+        ALL_ARTIFACTS=$(curl -s \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${{ inputs.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
+          | jq -r '.workflow_runs[].artifacts_url' \
+          | xargs -I {} curl -s \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${{ inputs.token }}" {} \
+        )
+
+        echo $ALL_ARTIFACTS
+
+        MATCH=$(echo "$ALL_ARTIFACTS" \
+          | jq -r --arg TARGET "${{ inputs.name }}" \
+          '.artifacts[]? | select(.name == $TARGET and .expired == false)' \
+        )
+
+        echo $MATCH
+
+        echo "name=${{ inputs.name }}" >> $GITHUB_OUTPUT
+        if [[ -z "$MATCH" ]]
+        then
+          echo "No artifact with name ${{ inputs.name }} was found"
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "run_id=" >> $GITHUB_OUTPUT
+          echo "download_url=" >> $GITHUB_OUTPUT
+        else
+          RUN_ID=$(echo "$MATCH" | jq -r '.workflow_run.id' | head -n 1)
+          DOWNLOAD_URL=$(echo "$MATCH" | jq -r '.archive_download_url' | head -n 1)
+          echo "Found artifact: ${{ inputs.name }} at run with ID: $RUN_ID and download url; $DOWNLOAD_URL"
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+        fi
