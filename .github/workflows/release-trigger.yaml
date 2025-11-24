@@ -172,6 +172,8 @@ jobs:
     needs: [get-versions,check-release-existance,build-qemu-artifacts,build-solo5-artifacts]
     if: needs.check-release-existance.outputs.exists == 'false'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
 
       - name: Harden the runner (Audit all outbound calls)
@@ -273,7 +275,7 @@ jobs:
           mv /tmp/solo5_amd64/solo5-hvt /tmp/qemu_amd64/opt/urunc/bin/
           mv /tmp/solo5_amd64/solo5-spt /tmp/qemu_amd64/opt/urunc/bin/
           mv /tmp/virtiofsd_amd64/virtiofsd_static /tmp/qemu_amd64/opt/urunc/bin/
-          tar czf release-${{ needs.check-release-existance.outputs.release }}.tar.gz /tmp/qemu_amd64
+          tar -C /tmp/qemu_amd64 -czf release-${{ needs.check-release-existance.outputs.release }}.tar.gz /tmp/qemu_amd64
 
       - name: Create release
         uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7 # v2.3.4
