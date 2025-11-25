@@ -47,7 +47,7 @@ jobs:
           echo "$FIRECRACKER_VERSION"
           echo "$VIRTIOFSD_VERSION"
 
-  check-release-existance:
+  check-release-existence:
     name: Check if release already exists
     needs: [get-versions]
     runs-on: ubuntu-latest
@@ -102,8 +102,8 @@ jobs:
 
   tag-parent: 
     name: Tag Parent Repository
-    needs: [check-release-existance]
-    if: needs.check-release-existance.outputs.exists == 'false'
+    needs: [check-release-existence]
+    if: needs.check-release-existence.outputs.exists == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -118,7 +118,7 @@ jobs:
         id: tag_parent
         with:
           repository: ${{ github.repository }}
-          tag: ${{ needs.check-release-existance.outputs.release }}
+          tag: ${{ needs.check-release-existence.outputs.release }}
           token: ${{ secrets.GITHUB_TOKEN }}
           skip_update: true
 
@@ -138,30 +138,30 @@ jobs:
           echo "Tag: $TAG"
           echo "Commit: $COMMIT"
 
-  build-qemu-artifacts:
+  build-Qemu-artifacts:
     name: Check and build missing Qemu artifacts
-    needs: [get-versions,check-release-existance,tag-parent]
-    if: needs.check-release-existance.outputs.exists == 'false'
+    needs: [get-versions,check-release-existence,tag-parent]
+    if: needs.check-release-existence.outputs.exists == 'false'
     uses: ./.github/workflows/qemu_build.yaml
     with:
       qemu_version: ${{ needs.get-versions.outputs.qemu_version }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
-  build-solo5-artifacts:
+  build-Solo5-artifacts:
     name: Check and build missing Solo5 artifacts
-    needs: [get-versions,check-release-existance,tag-parent]
-    if: needs.check-release-existance.outputs.exists == 'false'
+    needs: [get-versions,check-release-existence,tag-parent]
+    if: needs.check-release-existence.outputs.exists == 'false'
     uses: ./.github/workflows/solo5_build.yaml
     with:
       solo5_version: ${{ needs.get-versions.outputs.solo5_version }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
-  build-Virtiofsd-artifact:
+  build-Virtiofsd-artifacts:
     name: Check and build missing Virtiofsd artifact
-    needs: [get-versions,check-release-existance,tag-parent]
-    if: needs.check-release-existance.outputs.exists == 'false'
+    needs: [get-versions,check-release-existence,tag-parent]
+    if: needs.check-release-existence.outputs.exists == 'false'
     uses: ./.github/workflows/virtiofsd_build.yaml
     with:
       virtiofsd_version: ${{ needs.get-versions.outputs.virtiofsd_version }}
@@ -170,8 +170,8 @@ jobs:
 
   create-new-release:
     name: Create new release
-    needs: [get-versions,check-release-existance,build-qemu-artifacts,build-solo5-artifacts]
-    if: needs.check-release-existance.outputs.exists == 'false'
+    needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
+    if: needs.check-release-existence.outputs.exists == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -182,108 +182,57 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Get Qemu artifact's workflow id
-        id: qemu_artifact
-        run: |
-          RUN_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-            | jq -r '.workflow_runs[].artifacts_url' \
-            | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              {} \
-            | jq -r --arg TARGET \
-              "qemu-amd64-${{ needs.get-versions.outputs.qemu_version }}-${{ needs.check-release-existance.outputs.qemu_hash }}" \
-              '.artifacts[]? | select(.name == $TARGET) | .workflow_run.id' \
-            | head -n 1)
-
-          echo "runID=${RUN_ID}" >> $GITHUB_OUTPUT
-
-      - name: Get Solo5 artifact's workflow id
-        id: solo5_artifact
-        run: |
-          RUN_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-            | jq -r '.workflow_runs[].artifacts_url' \
-            | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              {} \
-            | jq -r --arg TARGET \
-              "solo5-hvt-amd64-${{ needs.get-versions.outputs.solo5_version }}" \
-              '.artifacts[]? | select(.name == $TARGET) | .workflow_run.id' \
-            | head -n 1)
-
-          echo "runID=${RUN_ID}" >> $GITHUB_OUTPUT
-
-      - name: Get Virtiofsd artifact's workflow id
-        id: virtiofsd_artifact
-        run: |
-          RUN_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success" \
-            | jq -r '.workflow_runs[].artifacts_url' \
-            | xargs -I {} curl -s -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              {} \
-            | jq -r --arg TARGET \
-              "virtiofsd-amd64-${{ needs.get-versions.outputs.virtiofsd_version }}" \
-              '.artifacts[]? | select(.name == $TARGET) | .workflow_run.id' \
-            | head -n 1)
-
-          echo "runID=${RUN_ID}" >> $GITHUB_OUTPUT
-
       - name: Download Qemu amd64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: qemu-amd64-${{ needs.get-versions.outputs.qemu_version }}-${{ needs.check-release-existance.outputs.qemu_hash }}
+          name: qemu-amd64-${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}
           path: /tmp/qemu_amd64
-          run-id: ${{ steps.qemu_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Qemu arm64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: qemu-arm64-${{ needs.get-versions.outputs.qemu_version }}-${{ needs.check-release-existance.outputs.qemu_hash }}
+          name: qemu-arm64-${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}
           path: /tmp/qemu_arm64
-          run-id: ${{ steps.qemu_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Solo5 amd64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          pattern: solo5-*-amd64-${{ needs.get-versions.outputs.solo5_version }}
+          pattern: solo5-*-amd64-${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}
           path: /tmp/solo5_amd64
-          run-id: ${{ steps.solo5_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Solo5 arm64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          pattern: solo5-*-arm64-${{ needs.get-versions.outputs.solo5_version }}
+          pattern: solo5-*-arm64-${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}
           path: /tmp/solo5_arm64
-          run-id: ${{ steps.solo5_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Virtiofsd amd64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: virtiofsd-amd64-${{ needs.get-versions.outputs.virtiofsd_version }}
+          name: virtiofsd-amd64-${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}
           path: /tmp/virtiofsd_amd64
-          run-id: ${{ steps.virtiofsd_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Virtiofsd arm64 artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: virtiofsd-arm64-${{ needs.get-versions.outputs.virtiofsd_version }}
+          name: virtiofsd-arm64-${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}
           path: /tmp/virtiofsd_arm64
-          run-id: ${{ steps.virtiofsd_artifact.outputs.runID }}
+          run-id: ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}
           merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -299,7 +248,7 @@ jobs:
           FC_RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases"
           curl -L ${FC_RELEASE_URL}/download/${{ needs.get-versions.outputs.firecracker_version }}/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-aarch64.tgz | tar -xz
           mkdir /tmp/fc_arm64
-          mv release-${{ needs.get-versions.outputs.firecracker_version }}-x86_64/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-aarch64 /tmp/fc_arm64/firecracker
+          mv release-${{ needs.get-versions.outputs.firecracker_version }}-aarch64/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-aarch64 /tmp/fc_arm64/firecracker
 
       - name: Package all artifacts
         run: |
@@ -307,25 +256,25 @@ jobs:
           mv /tmp/solo5_amd64/solo5-hvt /tmp/qemu_amd64/opt/urunc/bin/
           mv /tmp/solo5_amd64/solo5-spt /tmp/qemu_amd64/opt/urunc/bin/
           mv /tmp/virtiofsd_amd64/virtiofsd_static /tmp/qemu_amd64/opt/urunc/bin/
-          tar -C /tmp/qemu_amd64 -czf release-amd64-${{ needs.check-release-existance.outputs.release }}.tar.gz /tmp/qemu_amd64
+          tar -C /tmp/qemu_amd64 -czf release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz /tmp/qemu_amd64
           mv /tmp/fc_arm64/firecracker /tmp/qemu_arm64/opt/urunc/bin/
           mv /tmp/solo5_arm64/solo5-hvt /tmp/qemu_arm64/opt/urunc/bin/
           mv /tmp/solo5_arm64/solo5-spt /tmp/qemu_arm64/opt/urunc/bin/
           mv /tmp/virtiofsd_arm64/virtiofsd_static /tmp/qemu_arm64/opt/urunc/bin/
-          tar -C /tmp/qemu_arm64 -czf release-arm64-${{ needs.check-release-existance.outputs.release }}.tar.gz /tmp/qemu_arm64
+          tar -C /tmp/qemu_arm64 -czf release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz /tmp/qemu_arm64
 
       - name: Create release
         uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7 # v2.3.4
         id: create_release
         with:
           files: |
-            release-amd64-${{ needs.check-release-existance.outputs.release }}.tar.gz
-            release-arm64-${{ needs.check-release-existance.outputs.release }}.tar.gz
-          body: ${{ needs.check-release-existance.outputs.release }}
-          name: ${{ needs.check-release-existance.outputs.release }}
+            release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz
+            release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz
+          body: ${{ needs.check-release-existence.outputs.release }}
+          name: ${{ needs.check-release-existence.outputs.release }}
           draft: false
           prerelease: true
           generate_release_notes: false
-          tag_name: ${{ needs.check-release-existance.outputs.release }}
+          tag_name: ${{ needs.check-release-existence.outputs.release }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

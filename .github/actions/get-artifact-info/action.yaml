@@ -8,9 +8,6 @@ inputs:
     description: 'Github token for requests to Github API'
     required: false
 outputs:
-  name:
-    description: "The artifact name"
-    value: ${{ steps.get-artifact.outputs.name }}
   exists:
     description: "True if the artifact was found, false otherwise"
     value: ${{ steps.get-artifact.outputs.exists }}

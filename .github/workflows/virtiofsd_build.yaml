@@ -1,4 +1,4 @@
-name: Build Virtiofsd
+name: Get/Build Virtiofsd artifacts
 
 on:
   workflow_call:
@@ -18,14 +18,78 @@ on:
         type: string
         required: false
         default: '{"amd64":"ubuntu-24.04", "arm64":"ubuntu-24.04-arm"}'
+    outputs:
+      artifact_suffix:
+        description: 'The suffix of the Virtiofsd artifact (version)'
+        value: ${{ jobs.summarize-info.outputs.suffix }}
+      artifact_run_id:
+        description: 'The run id that built the Virtiofsd artifact'
+        value: ${{ jobs.summarize-info.outputs.run_id }}
 
 jobs:
-  build-Qemu:
+  check-artifact-existence:
+    runs-on: ubuntu-latest
+    outputs:
+      suffix: ${{ inputs.virtiofsd_version }}
+      exists: ${{ steps.search.outputs.exists }}
+      run_id: ${{ steps.search.outputs.run_id }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Search for amd64 artifact
+        id: search_amd64
+        uses: ./.github/actions/get-artifact-info/
+        with:
+          name: virtiofsd-amd64-${{ inputs.virtiofsd_version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Search for arm64 artifact
+        id: search_arm64
+        uses: ./.github/actions/get-artifact-info/
+        with:
+          name: virtiofsd-arm64-${{ inputs.virtiofsd_version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summarize search results
+        id: search
+        run: |
+          if [[ ${{ steps.search_amd64.outputs.exists }} == 'false' ]] || \
+             [[ ${{ steps.search_arm64.outputs.exists }} == 'false' ]]
+          then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "run_id=" >> $GITHUB_OUTPUT
+            echo "download_url=" >> $GITHUB_OUTPUT
+          else
+            if [[ ${{ steps.search_amd64.outputs.run_id }} != ${{ steps.search_arm64.outputs.run_id }} ]]
+            then
+              echo "exists=false" >> $GITHUB_OUTPUT
+              echo "run_id=" >> $GITHUB_OUTPUT
+              echo "download_url=" >> $GITHUB_OUTPUT
+            else
+              echo "exists=true" >> $GITHUB_OUTPUT
+              echo "run_id=${{ steps.search_arm64.outputs.run_id }}" >> $GITHUB_OUTPUT
+              echo "download_url=${{ steps.search_arm64.outputs.download_url }}" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  build-Virtiofsd:
     name: Build Virtiofsd static binaries
+    needs: [check-artifact-existence]
+    if: ${{ needs.check-artifact-existence.outputs.exists == 'false' }}
     strategy:
       matrix:
         arch: ${{ fromJSON(inputs.arch) }}
     runs-on: ${{ fromJSON(inputs.runner-arch-map)[matrix.arch] }}
+    outputs:
+      run_id: ${{ github.run_id }}
     steps:
 
       - name: Harden the runner (Audit all outbound calls)
@@ -37,13 +101,6 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
-
-      - name: Check if Virtiofsd artifacts exist
-        id: check
-        uses: ./.github/actions/get-artifact-info/
-        with:
-          name: "virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Map arch names
         id: arch_map
@@ -59,7 +116,6 @@ jobs:
           fi
 
       - name: Fetch and build Virtiofsd
-        if: ${{ steps.check.outputs.exists == 'false' }}
         uses: ./virtiofsd
         env:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
@@ -79,8 +135,25 @@ jobs:
             cp target/"$TARGET"/release/virtiofsd /github/workspace/virtiofsd_static
        
       - name: Archive Virtiofsd artifacts
-        if: ${{ steps.check.outputs.exists == 'false' }}
         uses: actions/upload-artifact@v4
         with:
-          name: virtiofsd-${{ matrix.arch }}-${{ inputs.virtiofsd_version }}
+          name: virtiofsd-${{ matrix.arch }}-${{ needs.check-artifact-existence.outputs.suffix }}
           path: virtiofsd_static
+
+  summarize-info:
+    runs-on: ubuntu-latest
+    needs: [check-artifact-existence, build-Virtiofsd]
+    if: ${{ !cancelled() }}
+    outputs:
+      suffix: ${{ needs.check-artifact-existence.outputs.suffix }}
+      run_id: ${{ steps.info.outputs.run_id }}
+    steps:
+      - name: Produce correct artifact info
+        id: info
+        run: |
+          if [[ "${{ needs.check-artifact-existence.outputs.exists }}" == "false" ]]
+          then
+            echo "run_id=${{ needs.build-Virtiofsd.outputs.run_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "run_id=${{ needs.check-artifact-existence.outputs.run_id }}" >> $GITHUB_OUTPUT
+          fi
