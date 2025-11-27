@@ -1,6 +1,14 @@
-name: Release Trigger
+name: Provide monitor artifacts
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - qemu/**
+      - solo5/**
+      - firecracker/**
+      - virtiofsd/**
   push:
     branches:
       - main
@@ -103,7 +111,8 @@ jobs:
   tag-parent: 
     name: Tag Parent Repository
     needs: [check-release-existence]
-    if: needs.check-release-existence.outputs.exists == 'false'
+    if: ${{ github.event_name == 'push' && 
+            needs.check-release-existence.outputs.exists == 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -140,8 +149,7 @@ jobs:
 
   build-Qemu-artifacts:
     name: Check and build missing Qemu artifacts
-    needs: [get-versions,check-release-existence,tag-parent]
-    if: needs.check-release-existence.outputs.exists == 'false'
+    needs: [get-versions]
     uses: ./.github/workflows/qemu_build.yaml
     with:
       qemu_version: ${{ needs.get-versions.outputs.qemu_version }}
@@ -150,8 +158,7 @@ jobs:
 
   build-Solo5-artifacts:
     name: Check and build missing Solo5 artifacts
-    needs: [get-versions,check-release-existence,tag-parent]
-    if: needs.check-release-existence.outputs.exists == 'false'
+    needs: [get-versions]
     uses: ./.github/workflows/solo5_build.yaml
     with:
       solo5_version: ${{ needs.get-versions.outputs.solo5_version }}
@@ -160,8 +167,7 @@ jobs:
 
   build-Virtiofsd-artifacts:
     name: Check and build missing Virtiofsd artifact
-    needs: [get-versions,check-release-existence,tag-parent]
-    if: needs.check-release-existence.outputs.exists == 'false'
+    needs: [get-versions]
     uses: ./.github/workflows/virtiofsd_build.yaml
     with:
       virtiofsd_version: ${{ needs.get-versions.outputs.virtiofsd_version }}
@@ -170,8 +176,9 @@ jobs:
 
   create-new-release:
     name: Create new release
-    needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
-    if: needs.check-release-existence.outputs.exists == 'false'
+    needs: [get-versions,check-release-existence,tag-parent,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
+    if: ${{ github.event_name == 'push' && 
+            needs.check-release-existence.outputs.exists == 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -293,3 +300,63 @@ jobs:
           tag_name: ${{ needs.check-release-existence.outputs.release }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  comment-artifact-links:
+    name: Post links for artifacts
+    needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
+    if: ${{ github.event_name == 'pull_request' && 
+            needs.check-release-existence.outputs.exists == 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Set download links
+        id: links
+        run: |
+          RUNS_URL="https://github.com/${{ github.repository }}/actions/runs"
+          QEMU_LINK="${RUNS_URL}/${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}"
+          SOLO5_LINK="${RUNS_URL}/${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}"
+          VIRTIOFSD_LINK="${RUNS_URL}/${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}"
+
+          FC_RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases"
+          FC_LINK="${FC_RELEASE_URL}/download/${{ needs.get-versions.outputs.firecracker_version }}"
+          echo "qemu=${QEMU_LINK}" >> $GITHUB_OUTPUT
+          echo "solo5=${SOLO5_LINK}" >> $GITHUB_OUTPUT
+          echo "virtiofsd=${VIRTIOFSD_LINK}" >> $GITHUB_OUTPUT
+          echo "firecracker=${FC_LINK}" >> $GITHUB_OUTPUT
+          if ${{ needs.check-release-existence.outputs.exists == 'false' }}
+          then
+            echo "release=" >> $GITHUB_OUTPUT
+          else
+            echo "release=https://github.com/${{ github.repository }}/releases/tag/${{ needs.check-release-existence.outputs.release }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add ccomment
+        uses: actions/github-script@v8
+        env:
+          QEMU_TEXT: "Qemu ${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.qemu }}"
+          SOLO5_TEXT: "Solo5 ${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.solo5 }}"
+          VFS_TEXT: "Virtiofsd ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.virtiofsd }}"
+          FC_TEXT: "Firecracker ${{ needs.get-versions.outputs.firecracker_version }}: ${{ steps.links.outputs.firecracker }}"
+        with:
+          script: |
+            const body = `
+            Links to download artifacts for amd64 and aarch64 architectures:
+            - ${process.env.QEMU_TEXT}
+            - ${process.env.SOLO5_TEXT}
+            - ${process.env.VFS_TEXT}
+            - ${process.env.FC_TEXT}
+            `;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            })
