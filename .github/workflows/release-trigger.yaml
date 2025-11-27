@@ -252,16 +252,31 @@ jobs:
 
       - name: Package all artifacts
         run: |
+          chmod +x /tmp/fc_amd64/firecracker
           mv /tmp/fc_amd64/firecracker /tmp/qemu_amd64/opt/urunc/bin/
+          chmod +x /tmp/solo5_amd64/solo5-hvt
           mv /tmp/solo5_amd64/solo5-hvt /tmp/qemu_amd64/opt/urunc/bin/
+          chmod +x /tmp/solo5_amd64/solo5-spt
           mv /tmp/solo5_amd64/solo5-spt /tmp/qemu_amd64/opt/urunc/bin/
-          mv /tmp/virtiofsd_amd64/virtiofsd_static /tmp/qemu_amd64/opt/urunc/bin/
-          tar -C /tmp/qemu_amd64 -czf release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz /tmp/qemu_amd64
+          chmod +x /tmp/virtiofsd_amd64/virtiofsd_static
+          mv /tmp/virtiofsd_amd64/virtiofsd_static /tmp/qemu_amd64/opt/urunc/bin/virtiofsd
+          tar -C /tmp/qemu_amd64 -czf release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz .
+          chmod +x /tmp/fc_arm64/firecracker
           mv /tmp/fc_arm64/firecracker /tmp/qemu_arm64/opt/urunc/bin/
+          chmod +x /tmp/solo5_arm64/solo5-hvt
           mv /tmp/solo5_arm64/solo5-hvt /tmp/qemu_arm64/opt/urunc/bin/
+          chmod +x /tmp/solo5_arm64/solo5-spt
           mv /tmp/solo5_arm64/solo5-spt /tmp/qemu_arm64/opt/urunc/bin/
-          mv /tmp/virtiofsd_arm64/virtiofsd_static /tmp/qemu_arm64/opt/urunc/bin/
-          tar -C /tmp/qemu_arm64 -czf release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz /tmp/qemu_arm64
+          chmod +x /tmp/virtiofsd_arm64/virtiofsd_static
+          mv /tmp/virtiofsd_arm64/virtiofsd_static /tmp/qemu_arm64/opt/urunc/bin/virtiofsd
+          tar -C /tmp/qemu_arm64 -czf release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz .
+          echo "This release contains statically-built artifacts for both amd64 and arm64 of the following monitors and tools:" > release_notes.txt
+          echo "- Qemu: ${{ needs.get-versions.outputs.firecracker_version }}" >> release_notes.txt
+          echo "- Solo5(hvt and spt): ${{ needs.get-versions.outputs.solo5_version }}" >> release_notes.txt
+          echo "- Firecracker: ${{ needs.get-versions.outputs.firecracker_version }}" >> release_notes.txt
+          echo "- Virtiofsd: ${{ needs.get-versions.outputs.virtiofsd_version }}" >> release_notes.txt
+          echo "" >> release_notes.txt
+          echo "The hash of the Qemu files is: ${{ needs.check-release-existence.outputs.qemu_hash }}" >> release_notes.txt
 
       - name: Create release
         uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7 # v2.3.4
@@ -270,7 +285,7 @@ jobs:
           files: |
             release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz
             release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz
-          body: ${{ needs.check-release-existence.outputs.release }}
+          body_path: "release_notes.txt"
           name: ${{ needs.check-release-existence.outputs.release }}
           draft: false
           prerelease: true
