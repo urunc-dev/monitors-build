@@ -13,12 +13,40 @@ The following components are currently supported:
 - [**Solo5**](https://github.com/Solo5/solo5)
 - [**virtiofsd**](https://gitlab.com/virtio-fs/virtiofsd)
 
-## Artifact Packaging
+## How to use
 
-Each component is built using the version specified in the `VERSION` file
-located in its respective directory. The resulting binaries are packaged into a
-single tar archive, which can be downloaded from the repository’s **Releases**
-page.
+This repository serves as a hub for storing various builds of `urunc`'s
+supported monitors and provides an easy platform for building both newer and
+older versions of them.
+
+Every user can request the build of any monitor version by opening a new Pull Request
+(PR). The process is the following one:
+
+1. **Specify the monitor version to build**: The version of each monitor is
+   specified in the `VERSION` file located in its respective directory (e.g.,
+   for Solo5, the version is in [solo5/VERSION](solo5/VERSION)).
+2. **Open a new PR**: Create new PR with the version change.
+3. **PR workflow gets triggered**: Upon opening a new PR a workflow will check
+   whether a) the requested versions of monitors have been built before and if
+   these artifacts are still valid and b) a previous release includes these
+   monitors. If a monitor with the specified version does not exist, then the
+   workflow will build it. The workflow will comment in the PR with the findings.
+4. **Merge of PR and creation of new relase**: Upon the approval and merge of
+   the PR in the main branch, a new workflow will collect all the artifacts of
+   the monitors and create a new release following the [release naming
+   scheme](#Release-Naming-Scheme).
+
+__Note for QEMU__
+
+Since QEMU is highly configurable, the build process also tracks changes in the
+following configuration files:
+
+- [amd64.config](qemu/amd64.config): Configuration for building Qemu on amd64
+  architectures,
+- [arm64.config](qemu/arm64.config): Configuration for building Qemu on arm64
+  architectures.
+- [excluded files list](qemu/unnecessary_files.txt): the list with the excluded
+  files from the final Qemu installation directory.
 
 ## Release Naming Scheme
 
