@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - VERSION
       - qemu/**
       - solo5/**
       - firecracker/**
@@ -14,6 +15,7 @@ on:
     branches:
       - main
     paths:
+      - VERSION
       - qemu/**
       - solo5/**
       - firecracker/**
@@ -25,6 +27,7 @@ jobs:
     name: Get the versions of all artifacts from their respeective VERSION files
     runs-on: ubuntu-latest
     outputs:
+      release_series: ${{ steps.versions.outputs.release_series }}
       qemu_version: ${{ steps.versions.outputs.qemu_version }}
       solo5_version: ${{ steps.versions.outputs.solo5_version }}
       firecracker_version: ${{ steps.versions.outputs.firecracker_version }}
@@ -45,16 +48,24 @@ jobs:
       - name: Get versions to build
         id: versions
         run: |
+          RELEASE_SERIES="$(cat VERSION)"
+          if ! [[ "$RELEASE_SERIES" =~ ^v[0-9]+\.[0-9]+$ ]]
+          then
+            echo "::error file=VERSION::VERSION must contain the release major and minor version (e.g. v0.1), got '$RELEASE_SERIES'"
+            exit 1
+          fi
           QEMU_VERSION="$(cat qemu/VERSION)"
           SOLO5_VERSION="$(cat solo5/VERSION)"
           FIRECRACKER_VERSION="$(cat firecracker/VERSION)"
           CLOUD_HYPERVISOR_VERSION="$(cat cloud-hypervisor/VERSION)"
           VIRTIOFSD_VERSION="$(cat virtiofsd/VERSION)"
+          echo "release_series=$RELEASE_SERIES" >> $GITHUB_OUTPUT
           echo "qemu_version=$QEMU_VERSION" >> $GITHUB_OUTPUT
           echo "solo5_version=$SOLO5_VERSION" >> $GITHUB_OUTPUT
           echo "firecracker_version=$FIRECRACKER_VERSION" >> $GITHUB_OUTPUT
           echo "cloud-hypervisor_version=$CLOUD_HYPERVISOR_VERSION" >> $GITHUB_OUTPUT
           echo "virtiofsd_version=$VIRTIOFSD_VERSION" >> $GITHUB_OUTPUT
+          echo "$RELEASE_SERIES"
           echo "$QEMU_VERSION"
           echo "$SOLO5_VERSION"
           echo "$FIRECRACKER_VERSION"
@@ -66,7 +77,8 @@ jobs:
     needs: [get-versions]
     runs-on: ubuntu-latest
     outputs: 
-      release: ${{ steps.release.outputs.name }}
+      release: ${{ steps.check.outputs.release }}
+      fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
       qemu_hash: ${{ steps.name.outputs.hash }}
       exists: ${{ steps.check.outputs.exists }}
 
@@ -91,27 +103,43 @@ jobs:
           echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
           echo "full=qemu-amd64-${{ needs.get-versions.outputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
 
-      - name: Generate release name
-        id: release
+      - name: Generate monitors fingerprint
+        id: fingerprint
         run: |
           SHORT_HASH=$(echo ${{ steps.name.outputs.hash }} | cut -c1-5)
-          echo "name=FC-${{ needs.get-versions.outputs.firecracker_version }}_CLH-${{ needs.get-versions.outputs.cloud-hypervisor_version }}_S5-${{ needs.get-versions.outputs.solo5_version }}_VFS_-${{ needs.get-versions.outputs.virtiofsd_version }}_QM-${{ needs.get-versions.outputs.qemu_version }}-${SHORT_HASH}" >> $GITHUB_OUTPUT
-          echo "qemu=${{ needs.get-versions.outputs.qemu_version }}-${SHORT_HASH}" >> $GITHUB_OUTPUT
+          echo "fingerprint=FC-${{ needs.get-versions.outputs.firecracker_version }}_CLH-${{ needs.get-versions.outputs.cloud-hypervisor_version }}_S5-${{ needs.get-versions.outputs.solo5_version }}_VFS-${{ needs.get-versions.outputs.virtiofsd_version }}_QM-${{ needs.get-versions.outputs.qemu_version }}-${SHORT_HASH}" >> $GITHUB_OUTPUT
 
       - name: Check if release exists
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERIES: ${{ needs.get-versions.outputs.release_series }}
+          FINGERPRINT: ${{ steps.fingerprint.outputs.fingerprint }}
         run: |
-          RELEASES=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-                      -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                      "https://api.github.com/repos/${{ github.repository }}/releases" \
-                      | jq -r '.[].name')
-          if echo "$RELEASES" | grep -q "${{ steps.release.outputs.name }}"
+          set -euo pipefail
+          # Find the latest vMAJOR.MINOR.PATCH release of the current series
+          LATEST=$(gh api --paginate "repos/${{ github.repository }}/releases" --jq '.[].tag_name' \
+                    | grep -E "^${SERIES//./\\.}\.[0-9]+$" | sort -V | tail -n 1 || true)
+          if [[ -z "$LATEST" ]]
           then
-            echo "Release already exists! Skipping creation."
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Release does not exist! Let's create it."
+            echo "No release found for ${SERIES}. Let's create ${SERIES}.0"
             echo "exists=false" >> $GITHUB_OUTPUT
+            echo "release=${SERIES}.0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # The monitor versions of a release are stored in its description
+          LATEST_BODY=$(gh api "repos/${{ github.repository }}/releases/tags/${LATEST}" --jq '.body')
+          if grep -qF "<!-- monitors-fingerprint: ${FINGERPRINT} -->" <<< "$LATEST_BODY"
+          then
+            echo "Release ${LATEST} already contains ${FINGERPRINT}! Skipping creation."
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "release=${LATEST}" >> $GITHUB_OUTPUT
+          else
+            NEXT="${SERIES}.$(( ${LATEST##*.} + 1 ))"
+            echo "Release ${LATEST} contains different monitors. Let's create ${NEXT}."
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "release=${NEXT}" >> $GITHUB_OUTPUT
           fi
 
   tag-parent: 
@@ -276,48 +304,65 @@ jobs:
           curl -L -o /tmp/clh_arm64/cloud-hypervisor ${CLH_RELEASE_URL}/download/${{ needs.get-versions.outputs.cloud-hypervisor_version }}/cloud-hypervisor-static-aarch64
 
       - name: Package all artifacts
+        env:
+          RELEASE: ${{ needs.check-release-existence.outputs.release }}
+          FINGERPRINT: ${{ needs.check-release-existence.outputs.fingerprint }}
         run: |
-          chmod +x /tmp/fc_amd64/firecracker
-          mv /tmp/fc_amd64/firecracker /tmp/qemu_amd64/opt/urunc/bin/
-          chmod +x /tmp/clh_amd64/cloud-hypervisor
-          mv /tmp/clh_amd64/cloud-hypervisor /tmp/qemu_amd64/opt/urunc/bin/
-          chmod +x /tmp/solo5_amd64/solo5-hvt
-          mv /tmp/solo5_amd64/solo5-hvt /tmp/qemu_amd64/opt/urunc/bin/
-          chmod +x /tmp/solo5_amd64/solo5-spt
-          mv /tmp/solo5_amd64/solo5-spt /tmp/qemu_amd64/opt/urunc/bin/
-          chmod +x /tmp/virtiofsd_amd64/virtiofsd_static
-          mv /tmp/virtiofsd_amd64/virtiofsd_static /tmp/qemu_amd64/opt/urunc/bin/virtiofsd
-          chmod +x /tmp/qemu_amd64/opt/urunc/bin/qemu-system-x86_64
-          tar -C /tmp/qemu_amd64/opt -czf release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz .
-          chmod +x /tmp/fc_arm64/firecracker
-          mv /tmp/fc_arm64/firecracker /tmp/qemu_arm64/opt/urunc/bin/
-          chmod +x /tmp/clh_arm64/cloud-hypervisor
-          mv /tmp/clh_arm64/cloud-hypervisor /tmp/qemu_arm64/opt/urunc/bin/
-          chmod +x /tmp/solo5_arm64/solo5-hvt
-          mv /tmp/solo5_arm64/solo5-hvt /tmp/qemu_arm64/opt/urunc/bin/
-          chmod +x /tmp/solo5_arm64/solo5-spt
-          mv /tmp/solo5_arm64/solo5-spt /tmp/qemu_arm64/opt/urunc/bin/
-          chmod +x /tmp/virtiofsd_arm64/virtiofsd_static
-          mv /tmp/virtiofsd_arm64/virtiofsd_static /tmp/qemu_arm64/opt/urunc/bin/virtiofsd
-          chmod +x /tmp/qemu_arm64/opt/urunc/bin/qemu-system-aarch64
-          tar -C /tmp/qemu_arm64/opt -czf release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz .
-          echo "This release contains statically-built artifacts for both amd64 and arm64 of the following monitors and tools:" > release_notes.txt
-          echo "- Qemu: ${{ needs.get-versions.outputs.qemu_version }}" >> release_notes.txt
-          echo "- Solo5(hvt and spt): ${{ needs.get-versions.outputs.solo5_version }}" >> release_notes.txt
-          echo "- Firecracker: ${{ needs.get-versions.outputs.firecracker_version }}" >> release_notes.txt
-          echo "- Cloud-Hypervisor: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}" >> release_notes.txt
-          echo "- Virtiofsd: ${{ needs.get-versions.outputs.virtiofsd_version }}" >> release_notes.txt
-          echo "" >> release_notes.txt
-          echo "The hash of the Qemu files is: ${{ needs.check-release-existence.outputs.qemu_hash }}" >> release_notes.txt
+          set -euo pipefail
+          mkdir release
+          for arch in amd64 arm64
+          do
+            case "$arch" in
+              amd64) QEMU_BIN=qemu-system-x86_64 ;;
+              arm64) QEMU_BIN=qemu-system-aarch64 ;;
+            esac
+
+            # Qemu requires its firmware files, hence it is provided as a tar
+            chmod +x /tmp/qemu_${arch}/opt/urunc/bin/${QEMU_BIN}
+            tar -C /tmp/qemu_${arch}/opt -czf release/qemu-${arch}.tar.gz .
+
+            # All other monitors are single static binaries
+            install -m 755 /tmp/fc_${arch}/firecracker release/firecracker-${arch}
+            install -m 755 /tmp/clh_${arch}/cloud-hypervisor release/cloud-hypervisor-${arch}
+            install -m 755 /tmp/solo5_${arch}/solo5-hvt release/solo5-hvt-${arch}
+            install -m 755 /tmp/solo5_${arch}/solo5-spt release/solo5-spt-${arch}
+            install -m 755 /tmp/virtiofsd_${arch}/virtiofsd_static release/virtiofsd-${arch}
+
+            # Bundle with all monitors under /opt/urunc
+            BUNDLE=/tmp/bundle_${arch}
+            cp -a /tmp/qemu_${arch}/opt "$BUNDLE"
+            install -m 755 release/firecracker-${arch} "$BUNDLE"/urunc/bin/firecracker
+            install -m 755 release/cloud-hypervisor-${arch} "$BUNDLE"/urunc/bin/cloud-hypervisor
+            install -m 755 release/solo5-hvt-${arch} "$BUNDLE"/urunc/bin/solo5-hvt
+            install -m 755 release/solo5-spt-${arch} "$BUNDLE"/urunc/bin/solo5-spt
+            install -m 755 release/virtiofsd-${arch} "$BUNDLE"/urunc/bin/virtiofsd
+            tar -C "$BUNDLE" -czf release/${FINGERPRINT}-${arch}.tar.gz .
+          done
+          ls -la release
+
+          cat > release_notes.md << EOF
+          This release contains statically-built artifacts for both amd64 and arm64 of the following monitors and tools:
+          - Qemu: ${{ needs.get-versions.outputs.qemu_version }} (hash of config files: ${{ needs.check-release-existence.outputs.qemu_hash }})
+          - Solo5(hvt and spt): ${{ needs.get-versions.outputs.solo5_version }}
+          - Firecracker: ${{ needs.get-versions.outputs.firecracker_version }}
+          - Cloud-Hypervisor: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
+          - Virtiofsd: ${{ needs.get-versions.outputs.virtiofsd_version }}
+
+          Artifacts (\`<arch>\` is \`amd64\` or \`arm64\`):
+          - \`firecracker-<arch>\`, \`cloud-hypervisor-<arch>\`, \`solo5-hvt-<arch>\`, \`solo5-spt-<arch>\`, \`virtiofsd-<arch>\`: static binaries
+          - \`qemu-<arch>.tar.gz\`: Qemu binary and its firmware files. Extract with \`tar -C /opt -xzf qemu-<arch>.tar.gz\`
+          - \`${FINGERPRINT}-<arch>.tar.gz\`: All of the above. Extract with \`tar -C /opt -xzf ${FINGERPRINT}-<arch>.tar.gz\`
+
+          <!-- monitors-fingerprint: ${FINGERPRINT} -->
+          EOF
+          cat release_notes.md
 
       - name: Create release
         uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7 # v2.3.4
         id: create_release
         with:
-          files: |
-            release-amd64-${{ needs.check-release-existence.outputs.release }}.tar.gz
-            release-arm64-${{ needs.check-release-existence.outputs.release }}.tar.gz
-          body_path: "release_notes.txt"
+          files: release/*
+          body_path: "release_notes.md"
           name: ${{ needs.check-release-existence.outputs.release }}
           draft: false
           prerelease: true
