@@ -1,0 +1,58 @@
+name: "Find a release containing a build"
+description: "Searches the releases of the repository for one whose description contains a marker and whose tag is on the main branch. Requires a checkout with the full history and tags"
+inputs:
+  marker:
+    description: 'The text that the description of the release must contain'
+    required: true
+  token:
+    description: 'Github token for requests to Github API'
+    required: true
+outputs:
+  release:
+    description: "The tag of the newest matching release, empty if none was found"
+    value: ${{ steps.find.outputs.release }}
+runs:
+  using: "composite"
+  steps:
+    - name: Find release
+      id: find
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        MARKER: ${{ inputs.marker }}
+      run: |
+        set -euo pipefail
+        if ! git rev-parse -q --verify origin/main > /dev/null
+        then
+          echo "::error::origin/main was not found. The checkout needs the full history"
+          exit 1
+        fi
+
+        # Releases are listed newest first. Drafts are skipped since they were
+        # never published
+        TAGS=$(gh api --paginate "repos/${{ github.repository }}/releases" |
+               jq -r --arg marker "$MARKER" \
+                 '.[] | select(.draft == false) | select((.body // "") | contains($marker)) | .tag_name')
+        for TAG in $TAGS
+        do
+          # Releases are only created by the workflow on the main branch. Do not
+          # trust a release whose tag is not on it, e.g. one created by the
+          # workflow of a pull request
+          if ! COMMIT=$(git rev-parse -q --verify "refs/tags/${TAG}^{commit}")
+          then
+            echo "::warning::Release ${TAG} contains '${MARKER}' but its tag was not found. Skipping it."
+            continue
+          fi
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main
+          then
+            echo "::warning::Release ${TAG} contains '${MARKER}' but its tag is not on main. Skipping it."
+            continue
+          fi
+
+          echo "Found '${MARKER}' in release ${TAG}"
+          echo "release=${TAG}" >> $GITHUB_OUTPUT
+          exit 0
+        done
+
+        echo "No release contains '${MARKER}'"
+        echo "release=" >> $GITHUB_OUTPUT

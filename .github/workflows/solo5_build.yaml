@@ -12,6 +12,10 @@ on:
         description: 'The commit that the Solo5 version tag must point to'
         type: string
         required: true
+      build_id:
+        description: 'Identifies the Solo5 build in release descriptions'
+        type: string
+        required: true
       arch:
         description: 'The CPU architecture to build Solo5'
         type: string
@@ -23,20 +27,16 @@ on:
         required: false
         default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
     outputs:
-      artifact_suffix:
-        description: 'The suffix of the Solo5 artifacts (version)'
-        value: ${{ jobs.summarize-info.outputs.suffix }}
-      artifact_run_id:
-        description: 'The run id that built the Solo5 artifacts'
-        value: ${{ jobs.summarize-info.outputs.run_id }}
+      release:
+        description: 'The release that already contains this Solo5 build, empty if it was built in this run'
+        value: ${{ jobs.find-cached-release.outputs.release }}
 
 jobs:
-  check-artifact-existence:
+  find-cached-release:
+    name: Find a release with the same Solo5 build
     runs-on: ubuntu-latest
     outputs:
-      suffix: ${{ inputs.solo5_version }}
-      exists: ${{ steps.search.outputs.exists }}
-      run_id: ${{ steps.search.outputs.run_id }}
+      release: ${{ steps.find.outputs.release }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
@@ -48,73 +48,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Search for Solo5-hvt amd64 artifact
-        id: search_hvt_amd64
-        uses: ./.github/actions/get-artifact-info/
+      - name: Search the releases
+        id: find
+        uses: ./.github/actions/find-release/
         with:
-          name: solo5-hvt-amd64-${{ inputs.solo5_version }}
+          marker: '<!-- solo5: ${{ inputs.build_id }} -->'
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Search for Solo5-hvt arm64 artifact
-        id: search_hvt_arm64
-        uses: ./.github/actions/get-artifact-info/
-        with:
-          name: solo5-hvt-arm64-${{ inputs.solo5_version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Search for Solo5-spt amd64 artifact
-        id: search_spt_amd64
-        uses: ./.github/actions/get-artifact-info/
-        with:
-          name: solo5-spt-amd64-${{ inputs.solo5_version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Search for Solo5-spt arm64 artifact
-        id: search_spt_arm64
-        uses: ./.github/actions/get-artifact-info/
-        with:
-          name: solo5-spt-arm64-${{ inputs.solo5_version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Summarize search results
-        id: search
-        run: |
-          if [[ ${{ steps.search_hvt_amd64.outputs.exists }} == 'false' ]] || \
-             [[ ${{ steps.search_hvt_arm64.outputs.exists }} == 'false' ]] || \
-             [[ ${{ steps.search_spt_amd64.outputs.exists }} == 'false' ]] || \
-             [[ ${{ steps.search_spt_arm64.outputs.exists }} == 'false' ]]
-          then
-            echo "One of the artifacts was not found"
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "run_id=" >> $GITHUB_OUTPUT
-            echo "download_url=" >> $GITHUB_OUTPUT
-          else
-            if [[ ${{ steps.search_hvt_amd64.outputs.run_id }} != ${{ steps.search_hvt_arm64.outputs.run_id }} ]] || \
-               [[ ${{ steps.search_hvt_amd64.outputs.run_id }} != ${{ steps.search_spt_amd64.outputs.run_id }} ]] || \
-               [[ ${{ steps.search_hvt_amd64.outputs.run_id }} != ${{ steps.search_spt_arm64.outputs.run_id }} ]]
-            then
-              echo "Artifacts were built with different run id"
-              echo "exists=false" >> $GITHUB_OUTPUT
-              echo "run_id=" >> $GITHUB_OUTPUT
-              echo "download_url=" >> $GITHUB_OUTPUT
-            else
-              echo "Found them"
-              echo "exists=true" >> $GITHUB_OUTPUT
-              echo "run_id=${{ steps.search_hvt_arm64.outputs.run_id }}" >> $GITHUB_OUTPUT
-              echo "download_url=${{ steps.search_hvt_arm64.outputs.download_url }}" >> $GITHUB_OUTPUT
-            fi
-          fi
 
   build-Solo5:
     name: Build Solo5 static binaries
-    needs: [check-artifact-existence]
-    if: ${{ needs.check-artifact-existence.outputs.exists == 'false' }}
+    needs: [find-cached-release]
+    if: ${{ needs.find-cached-release.outputs.release == '' }}
     strategy:
       matrix:
         arch: ${{ fromJSON(inputs.arch) }}
     runs-on: ${{ fromJSON(inputs.runner-arch-map)[matrix.arch] }}
-    outputs:
-      run_id: ${{ github.run_id }}
     steps:
 
       - name: Harden the runner (Audit all outbound calls)
@@ -146,33 +94,21 @@ jobs:
           cd solo5_source
           sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
           ./configure.sh && make -j$(nproc)
-       
+
+      # Name the binaries as in the releases
+      - name: Rename Solo5-hvt and Solo5-spt
+        run: |
+          mv solo5_source/tenders/hvt/solo5-hvt solo5-hvt-${{ matrix.arch }}
+          mv solo5_source/tenders/spt/solo5-spt solo5-spt-${{ matrix.arch }}
+
       - name: Archive Solo5-hvt artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solo5-hvt-${{ matrix.arch }}-${{ needs.check-artifact-existence.outputs.suffix }}
-          path: solo5_source/tenders/hvt/solo5-hvt
-       
+          name: solo5-hvt-${{ matrix.arch }}
+          path: solo5-hvt-${{ matrix.arch }}
+
       - name: Archive Solo5-spt artifact
         uses: actions/upload-artifact@v4
         with:
-          name: solo5-spt-${{ matrix.arch }}-${{ needs.check-artifact-existence.outputs.suffix }}
-          path: solo5_source/tenders/spt/solo5-spt
-
-  summarize-info:
-    runs-on: ubuntu-latest
-    needs: [check-artifact-existence, build-Solo5]
-    if: ${{ !cancelled() }}
-    outputs:
-      suffix: ${{ needs.check-artifact-existence.outputs.suffix }}
-      run_id: ${{ steps.info.outputs.run_id }}
-    steps:
-      - name: Produce correct artifact info
-        id: info
-        run: |
-          if [[ "${{ needs.check-artifact-existence.outputs.exists }}" == "false" ]]
-          then
-            echo "run_id=${{ needs.build-Solo5.outputs.run_id }}" >> $GITHUB_OUTPUT
-          else
-            echo "run_id=${{ needs.check-artifact-existence.outputs.run_id }}" >> $GITHUB_OUTPUT
-          fi
+          name: solo5-spt-${{ matrix.arch }}
+          path: solo5-spt-${{ matrix.arch }}

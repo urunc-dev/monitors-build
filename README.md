@@ -31,14 +31,14 @@ Every user can request the build of any monitor version by opening a new Pull Re
    points to (see [Source verification](#Source-verification)).
 2. **Open a new PR**: Create new PR with the version change.
 3. **PR workflow gets triggered**: Upon opening a new PR a workflow will check
-   whether a) the requested versions of monitors have been built before and if
-   these artifacts are still valid and b) a previous release includes these
-   monitors. If a monitor with the specified version does not exist, then the
-   workflow will build it. The workflow will comment in the PR with the findings.
+   whether a) the latest release already contains all the requested monitors
+   and b) previous releases contain some of them. The monitors that are not
+   found in a release are built. The workflow will comment in the PR with the
+   findings
 4. **Merge of PR and creation of new relase**: Upon the approval and merge of
-   the PR in the main branch, a new workflow will collect all the artifacts of
-   the monitors and create a new release following the [release versioning
-   scheme](#Release-Versioning-Scheme).
+   the PR in the main branch, a new workflow will collect the monitors, either
+   from previous releases or by building them again, and create a new release
+   following the [release versioning scheme](#Release-Versioning-Scheme).
 
 __Note for QEMU__
 
@@ -79,9 +79,12 @@ Releases are named `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`):
 - `MAJOR` and `MINOR` are specified in the top-level [VERSION](VERSION) file
   (e.g. `v0.1`) and they are bumped manually with a PR.
 - `PATCH` is bumped automatically. Upon a merge in the main branch, a new
-  release is created only if the versions of the monitors (or the Qemu
-  configuration files) differ from the ones in the latest release of the same
-  `MAJOR.MINOR` series. The first release of a new series gets `PATCH` 0.
+  release is created only if the monitors differ from the ones in the latest
+  release of the same `MAJOR.MINOR` series. For Qemu, Solo5 and Virtiofsd,
+  which are built from source, this includes any change in their directory
+  (e.g. their `COMMIT` file or the Qemu configuration files) or in their build
+  workflow, since such a change leads to a new build. The first release of a
+  new series gets `PATCH` 0.
 
 The versions of the monitors that a release contains are listed in its
 description.

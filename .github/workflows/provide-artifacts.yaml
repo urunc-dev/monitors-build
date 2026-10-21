@@ -11,6 +11,8 @@ on:
       - firecracker/**
       - cloud-hypervisor/**
       - virtiofsd/**
+      # The workflows define how the monitors get built and released
+      - .github/**
   push:
     branches:
       - main
@@ -21,6 +23,8 @@ on:
       - firecracker/**
       - cloud-hypervisor/**
       - virtiofsd/**
+      # The workflows define how the monitors get built and released
+      - .github/**
 
 jobs:
   get-versions:
@@ -36,6 +40,10 @@ jobs:
       qemu_commit: ${{ steps.versions.outputs.qemu_commit }}
       solo5_commit: ${{ steps.versions.outputs.solo5_commit }}
       virtiofsd_commit: ${{ steps.versions.outputs.virtiofsd_commit }}
+      qemu_hash: ${{ steps.versions.outputs.qemu_hash }}
+      qemu_build_id: ${{ steps.versions.outputs.qemu_build_id }}
+      solo5_build_id: ${{ steps.versions.outputs.solo5_build_id }}
+      virtiofsd_build_id: ${{ steps.versions.outputs.virtiofsd_build_id }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -65,6 +73,28 @@ jobs:
           QEMU_COMMIT="$(cat qemu/COMMIT)"
           SOLO5_COMMIT="$(cat solo5/COMMIT)"
           VIRTIOFSD_COMMIT="$(cat virtiofsd/COMMIT)"
+          QEMU_AMD64_CONFIG=$( LC_ALL=C sort qemu/amd64.config )
+          QEMU_ARM64_CONFIG=$( LC_ALL=C sort qemu/arm64.config )
+          QEMU_IGNORE_LIST=$( LC_ALL=C sort qemu/unnecessary_files.txt )
+          QEMU_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
+          # The monitors built from source are identified in release
+          # descriptions by their version and a hash of everything that
+          # defines their build: their directory (e.g. VERSION, COMMIT, Qemu
+          # configuration files, Virtiofsd Dockerfile) and their workflow.
+          # Hence, a change in any of them leads to a new build.
+          build_hash() {
+            local files
+            files="$(git ls-tree -r HEAD -- "$@")"
+            if [[ -z "$files" ]]
+            then
+              echo "::error::None of $* found" >&2
+              return 1
+            fi
+            sha256sum <<< "$files" | cut -c1-12
+          }
+          QEMU_BUILD_ID="${QEMU_VERSION}-$(build_hash qemu .github/workflows/qemu_build.yaml)"
+          SOLO5_BUILD_ID="${SOLO5_VERSION}-$(build_hash solo5 .github/workflows/solo5_build.yaml)"
+          VIRTIOFSD_BUILD_ID="${VIRTIOFSD_VERSION}-$(build_hash virtiofsd .github/workflows/virtiofsd_build.yaml)"
           echo "release_series=$RELEASE_SERIES" >> $GITHUB_OUTPUT
           echo "qemu_version=$QEMU_VERSION" >> $GITHUB_OUTPUT
           echo "solo5_version=$SOLO5_VERSION" >> $GITHUB_OUTPUT
@@ -74,6 +104,10 @@ jobs:
           echo "qemu_commit=$QEMU_COMMIT" >> $GITHUB_OUTPUT
           echo "solo5_commit=$SOLO5_COMMIT" >> $GITHUB_OUTPUT
           echo "virtiofsd_commit=$VIRTIOFSD_COMMIT" >> $GITHUB_OUTPUT
+          echo "qemu_hash=$QEMU_HASH" >> $GITHUB_OUTPUT
+          echo "qemu_build_id=$QEMU_BUILD_ID" >> $GITHUB_OUTPUT
+          echo "solo5_build_id=$SOLO5_BUILD_ID" >> $GITHUB_OUTPUT
+          echo "virtiofsd_build_id=$VIRTIOFSD_BUILD_ID" >> $GITHUB_OUTPUT
           echo "$RELEASE_SERIES"
           echo "$QEMU_VERSION"
           echo "$SOLO5_VERSION"
@@ -83,6 +117,9 @@ jobs:
           echo "$QEMU_COMMIT"
           echo "$SOLO5_COMMIT"
           echo "$VIRTIOFSD_COMMIT"
+          echo "$QEMU_BUILD_ID"
+          echo "$SOLO5_BUILD_ID"
+          echo "$VIRTIOFSD_BUILD_ID"
 
   check-release-existence:
     name: Check if release already exists
@@ -91,7 +128,6 @@ jobs:
     outputs: 
       release: ${{ steps.check.outputs.release }}
       fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
-      qemu_hash: ${{ steps.name.outputs.hash }}
       exists: ${{ steps.check.outputs.exists }}
 
     steps:
@@ -100,25 +136,10 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          fetch-depth: 0
-
-      - name: Generate Qemu artifact name
-        id: name
-        run: |
-          QEMU_AMD64_CONFIG=$( LC_ALL=C sort qemu/amd64.config )
-          QEMU_ARM64_CONFIG=$( LC_ALL=C sort qemu/arm64.config )
-          QEMU_IGNORE_LIST=$( LC_ALL=C sort qemu/unnecessary_files.txt )
-          QEMU_FILES_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
-          echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
-          echo "full=qemu-amd64-${{ needs.get-versions.outputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
-
       - name: Generate monitors fingerprint
         id: fingerprint
         run: |
-          SHORT_HASH=$(echo ${{ steps.name.outputs.hash }} | cut -c1-5)
+          SHORT_HASH=$(echo ${{ needs.get-versions.outputs.qemu_hash }} | cut -c1-5)
           echo "fingerprint=FC-${{ needs.get-versions.outputs.firecracker_version }}_CLH-${{ needs.get-versions.outputs.cloud-hypervisor_version }}_S5-${{ needs.get-versions.outputs.solo5_version }}_VFS-${{ needs.get-versions.outputs.virtiofsd_version }}_QM-${{ needs.get-versions.outputs.qemu_version }}-${SHORT_HASH}" >> $GITHUB_OUTPUT
 
       - name: Check if release exists
@@ -127,11 +148,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SERIES: ${{ needs.get-versions.outputs.release_series }}
           FINGERPRINT: ${{ steps.fingerprint.outputs.fingerprint }}
+          QEMU_BUILD_ID: ${{ needs.get-versions.outputs.qemu_build_id }}
+          SOLO5_BUILD_ID: ${{ needs.get-versions.outputs.solo5_build_id }}
+          VIRTIOFSD_BUILD_ID: ${{ needs.get-versions.outputs.virtiofsd_build_id }}
         run: |
           set -euo pipefail
-          # Find the latest vMAJOR.MINOR.PATCH release of the current series
-          LATEST=$(gh api --paginate "repos/${{ github.repository }}/releases" --jq '.[].tag_name' \
-                    | grep -E "^${SERIES//./\\.}\.[0-9]+$" | sort -V | tail -n 1 || true)
+          # Find the latest vMAJOR.MINOR.PATCH release of the current series.
+          # A failure of the API call fails the step, since it would otherwise
+          # look like there is no release
+          TAGS=$(gh api --paginate "repos/${{ github.repository }}/releases" --jq '.[].tag_name')
+          # No release of the series is not an error
+          LATEST=$( { grep -E "^${SERIES//./\\.}\.[0-9]+$" <<< "$TAGS" || true; } | sort -V | tail -n 1)
           if [[ -z "$LATEST" ]]
           then
             echo "No release found for ${SERIES}. Let's create ${SERIES}.0"
@@ -140,9 +167,13 @@ jobs:
             exit 0
           fi
 
-          # The monitor versions of a release are stored in its description
+          # The monitor versions of a release and the builds of the monitors
+          # built from source are stored in its description
           LATEST_BODY=$(gh api "repos/${{ github.repository }}/releases/tags/${LATEST}" --jq '.body')
-          if grep -qF "<!-- monitors-fingerprint: ${FINGERPRINT} -->" <<< "$LATEST_BODY"
+          if grep -qF "<!-- monitors-fingerprint: ${FINGERPRINT} -->" <<< "$LATEST_BODY" && \
+             grep -qF "<!-- qemu: ${QEMU_BUILD_ID} -->" <<< "$LATEST_BODY" && \
+             grep -qF "<!-- solo5: ${SOLO5_BUILD_ID} -->" <<< "$LATEST_BODY" && \
+             grep -qF "<!-- virtiofsd: ${VIRTIOFSD_BUILD_ID} -->" <<< "$LATEST_BODY"
           then
             echo "Release ${LATEST} already contains ${FINGERPRINT}! Skipping creation."
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -200,6 +231,7 @@ jobs:
     with:
       qemu_version: ${{ needs.get-versions.outputs.qemu_version }}
       qemu_commit: ${{ needs.get-versions.outputs.qemu_commit }}
+      build_id: ${{ needs.get-versions.outputs.qemu_build_id }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -210,6 +242,7 @@ jobs:
     with:
       solo5_version: ${{ needs.get-versions.outputs.solo5_version }}
       solo5_commit: ${{ needs.get-versions.outputs.solo5_commit }}
+      build_id: ${{ needs.get-versions.outputs.solo5_build_id }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -220,6 +253,7 @@ jobs:
     with:
       virtiofsd_version: ${{ needs.get-versions.outputs.virtiofsd_version }}
       virtiofsd_commit: ${{ needs.get-versions.outputs.virtiofsd_commit }}
+      build_id: ${{ needs.get-versions.outputs.virtiofsd_build_id }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -238,59 +272,45 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Download Qemu amd64 artifacts
+      # Qemu, Solo5 and Virtiofsd come either from this run, if they were built
+      # in it, or from the release they were found in. Both provide the same
+      # files, named as in the releases.
+      - name: Download artifacts built in this run
+        if: ${{ needs.build-Qemu-artifacts.outputs.release == '' ||
+                needs.build-Solo5-artifacts.outputs.release == '' ||
+                needs.build-Virtiofsd-artifacts.outputs.release == '' }}
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
-          name: qemu-amd64-${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}
-          path: /tmp/qemu_amd64
-          run-id: ${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}
+          path: /tmp/monitors
           merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download Qemu arm64 artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          name: qemu-arm64-${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}
-          path: /tmp/qemu_arm64
-          run-id: ${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Solo5 amd64 artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          pattern: solo5-*-amd64-${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}
-          path: /tmp/solo5_amd64
-          run-id: ${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Solo5 arm64 artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          pattern: solo5-*-arm64-${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}
-          path: /tmp/solo5_arm64
-          run-id: ${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Virtiofsd amd64 artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          name: virtiofsd-amd64-${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}
-          path: /tmp/virtiofsd_amd64
-          run-id: ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Virtiofsd arm64 artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          name: virtiofsd-arm64-${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}
-          path: /tmp/virtiofsd_arm64
-          run-id: ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}
-          merge-multiple: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download artifacts from previous releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QEMU_RELEASE: ${{ needs.build-Qemu-artifacts.outputs.release }}
+          SOLO5_RELEASE: ${{ needs.build-Solo5-artifacts.outputs.release }}
+          VIRTIOFSD_RELEASE: ${{ needs.build-Virtiofsd-artifacts.outputs.release }}
+        run: |
+          set -euo pipefail
+          # Downloads the given files from a release, if a release is given
+          get_from_release() {
+            local release="$1"
+            shift
+            if [[ -z "$release" ]]
+            then
+              return 0
+            fi
+            local patterns=()
+            for file in "$@"
+            do
+              patterns+=(-p "$file")
+            done
+            echo "Downloading $* from release ${release}"
+            gh release download "$release" -R "${{ github.repository }}" -D /tmp/monitors "${patterns[@]}"
+          }
+          get_from_release "$QEMU_RELEASE" qemu-amd64.tar.gz qemu-arm64.tar.gz
+          get_from_release "$SOLO5_RELEASE" solo5-hvt-amd64 solo5-spt-amd64 solo5-hvt-arm64 solo5-spt-arm64
+          get_from_release "$VIRTIOFSD_RELEASE" virtiofsd-amd64 virtiofsd-arm64
 
       - name: Download Firecracker amd64 binary
         env:
@@ -373,25 +393,18 @@ jobs:
           mkdir release
           for arch in amd64 arm64
           do
-            case "$arch" in
-              amd64) QEMU_BIN=qemu-system-x86_64 ;;
-              arm64) QEMU_BIN=qemu-system-aarch64 ;;
-            esac
-
-            # Qemu requires its firmware files, hence it is provided as a tar
-            chmod +x /tmp/qemu_${arch}/opt/urunc/bin/${QEMU_BIN}
-            tar -C /tmp/qemu_${arch}/opt -czf release/qemu-${arch}.tar.gz .
-
-            # All other monitors are single static binaries
+            cp /tmp/monitors/qemu-${arch}.tar.gz release/
+            # Artifacts do not preserve the file permissions
             install -m 755 /tmp/fc_${arch}/firecracker release/firecracker-${arch}
             install -m 755 /tmp/clh_${arch}/cloud-hypervisor release/cloud-hypervisor-${arch}
-            install -m 755 /tmp/solo5_${arch}/solo5-hvt release/solo5-hvt-${arch}
-            install -m 755 /tmp/solo5_${arch}/solo5-spt release/solo5-spt-${arch}
-            install -m 755 /tmp/virtiofsd_${arch}/virtiofsd_static release/virtiofsd-${arch}
+            install -m 755 /tmp/monitors/solo5-hvt-${arch} release/solo5-hvt-${arch}
+            install -m 755 /tmp/monitors/solo5-spt-${arch} release/solo5-spt-${arch}
+            install -m 755 /tmp/monitors/virtiofsd-${arch} release/virtiofsd-${arch}
 
             # Bundle with all monitors under /opt/urunc
             BUNDLE=/tmp/bundle_${arch}
-            cp -a /tmp/qemu_${arch}/opt "$BUNDLE"
+            mkdir "$BUNDLE"
+            tar -C "$BUNDLE" -xzf release/qemu-${arch}.tar.gz
             install -m 755 release/firecracker-${arch} "$BUNDLE"/urunc/bin/firecracker
             install -m 755 release/cloud-hypervisor-${arch} "$BUNDLE"/urunc/bin/cloud-hypervisor
             install -m 755 release/solo5-hvt-${arch} "$BUNDLE"/urunc/bin/solo5-hvt
@@ -403,7 +416,7 @@ jobs:
 
           cat > release_notes.md << EOF
           This release contains statically-built artifacts for both amd64 and arm64 of the following monitors and tools:
-          - Qemu: ${{ needs.get-versions.outputs.qemu_version }} (hash of config files: ${{ needs.check-release-existence.outputs.qemu_hash }})
+          - Qemu: ${{ needs.get-versions.outputs.qemu_version }} (hash of config files: ${{ needs.get-versions.outputs.qemu_hash }})
           - Solo5(hvt and spt): ${{ needs.get-versions.outputs.solo5_version }}
           - Firecracker: ${{ needs.get-versions.outputs.firecracker_version }}
           - Cloud-Hypervisor: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
@@ -415,6 +428,9 @@ jobs:
           - \`${FINGERPRINT}-<arch>.tar.gz\`: All of the above. Extract with \`tar -C /opt -xzf ${FINGERPRINT}-<arch>.tar.gz\`
 
           <!-- monitors-fingerprint: ${FINGERPRINT} -->
+          <!-- qemu: ${{ needs.get-versions.outputs.qemu_build_id }} -->
+          <!-- solo5: ${{ needs.get-versions.outputs.solo5_build_id }} -->
+          <!-- virtiofsd: ${{ needs.get-versions.outputs.virtiofsd_build_id }} -->
           EOF
           cat release_notes.md
 
@@ -450,11 +466,23 @@ jobs:
 
       - name: Set download links
         id: links
+        env:
+          QEMU_RELEASE: ${{ needs.build-Qemu-artifacts.outputs.release }}
+          SOLO5_RELEASE: ${{ needs.build-Solo5-artifacts.outputs.release }}
+          VIRTIOFSD_RELEASE: ${{ needs.build-Virtiofsd-artifacts.outputs.release }}
         run: |
-          RUNS_URL="https://github.com/${{ github.repository }}/actions/runs"
-          QEMU_LINK="${RUNS_URL}/${{ needs.build-Qemu-artifacts.outputs.artifact_run_id }}"
-          SOLO5_LINK="${RUNS_URL}/${{ needs.build-Solo5-artifacts.outputs.artifact_run_id }}"
-          VIRTIOFSD_LINK="${RUNS_URL}/${{ needs.build-Virtiofsd-artifacts.outputs.artifact_run_id }}"
+          # Monitors that were not found in a release were built in this run
+          link() {
+            if [[ -n "$1" ]]
+            then
+              echo "https://github.com/${{ github.repository }}/releases/tag/$1"
+            else
+              echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            fi
+          }
+          QEMU_LINK=$(link "$QEMU_RELEASE")
+          SOLO5_LINK=$(link "$SOLO5_RELEASE")
+          VIRTIOFSD_LINK=$(link "$VIRTIOFSD_RELEASE")
 
           FC_RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases"
           FC_LINK="${FC_RELEASE_URL}/tag/${{ needs.get-versions.outputs.firecracker_version }}"
@@ -475,9 +503,9 @@ jobs:
       - name: Add ccomment
         uses: actions/github-script@v8
         env:
-          QEMU_TEXT: "Qemu ${{ needs.build-Qemu-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.qemu }}"
-          SOLO5_TEXT: "Solo5 ${{ needs.build-Solo5-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.solo5 }}"
-          VFS_TEXT: "Virtiofsd ${{ needs.build-Virtiofsd-artifacts.outputs.artifact_suffix }}: ${{ steps.links.outputs.virtiofsd }}"
+          QEMU_TEXT: "Qemu ${{ needs.get-versions.outputs.qemu_build_id }}: ${{ steps.links.outputs.qemu }}"
+          SOLO5_TEXT: "Solo5 ${{ needs.get-versions.outputs.solo5_build_id }}: ${{ steps.links.outputs.solo5 }}"
+          VFS_TEXT: "Virtiofsd ${{ needs.get-versions.outputs.virtiofsd_build_id }}: ${{ steps.links.outputs.virtiofsd }}"
           FC_TEXT: "Firecracker ${{ needs.get-versions.outputs.firecracker_version }}: ${{ steps.links.outputs.firecracker }}"
           CLH_TEXT: "Cloud-Hypervisor ${{ needs.get-versions.outputs.cloud-hypervisor_version }}: ${{ steps.links.outputs.cloud-hypervisor }}"
         with:
