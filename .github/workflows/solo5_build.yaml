@@ -8,6 +8,10 @@ on:
         type: string
         required: false
         default: 'v0.9.3'
+      solo5_commit:
+        description: 'The commit that the Solo5 version tag must point to'
+        type: string
+        required: true
       arch:
         description: 'The CPU architecture to build Solo5'
         type: string
@@ -128,9 +132,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git build-essential libseccomp-dev pkg-config bc
 
+      - name: Fetch Solo5
+        uses: ./.github/actions/clone-verified/
+        with:
+          repository: https://github.com/Solo5/solo5.git
+          version: ${{ inputs.solo5_version }}
+          commit: ${{ inputs.solo5_commit }}
+          path: solo5_source
+          depth: '0'
+
       - name: Build Solo5-hvt and Solo5-spt
         run: |
-          git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git solo5_source
           cd solo5_source
           sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
           ./configure.sh && make -j$(nproc)

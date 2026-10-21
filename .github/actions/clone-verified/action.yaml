@@ -1,0 +1,46 @@
+name: "Clone and verify a version tag"
+description: "Clones the tag of a version and fails if the tag does not point to the expected commit, e.g. because it was moved"
+inputs:
+  repository:
+    description: 'URL of the git repository to clone'
+    required: true
+  version:
+    description: 'The version tag to clone'
+    required: true
+  commit:
+    description: 'The full hash of the commit that the version tag must point to'
+    required: true
+  path:
+    description: 'The directory to clone into'
+    required: true
+  depth:
+    description: 'Number of commits to fetch, 0 fetches the whole history'
+    required: false
+    default: '1'
+runs:
+  using: "composite"
+  steps:
+    - name: Clone and verify the version tag
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        VERSION: ${{ inputs.version }}
+        COMMIT: ${{ inputs.commit }}
+        CLONE_PATH: ${{ inputs.path }}
+        DEPTH: ${{ inputs.depth }}
+      run: |
+        set -euo pipefail
+        DEPTH_ARGS=()
+        if [[ "$DEPTH" != "0" ]]
+        then
+          DEPTH_ARGS=(--depth "$DEPTH")
+        fi
+        git clone -b "$VERSION" "${DEPTH_ARGS[@]}" "$REPOSITORY" "$CLONE_PATH"
+
+        ACTUAL=$(git -C "$CLONE_PATH" rev-parse HEAD)
+        if [[ "$ACTUAL" != "$COMMIT" ]]
+        then
+          echo "::error::${REPOSITORY} ${VERSION} points to ${ACTUAL}, expected ${COMMIT}"
+          exit 1
+        fi
+        echo "${REPOSITORY} ${VERSION} points to ${COMMIT}"

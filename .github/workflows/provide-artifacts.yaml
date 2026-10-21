@@ -33,6 +33,9 @@ jobs:
       firecracker_version: ${{ steps.versions.outputs.firecracker_version }}
       cloud-hypervisor_version: ${{ steps.versions.outputs.cloud-hypervisor_version }}
       virtiofsd_version: ${{ steps.versions.outputs.virtiofsd_version }}
+      qemu_commit: ${{ steps.versions.outputs.qemu_commit }}
+      solo5_commit: ${{ steps.versions.outputs.solo5_commit }}
+      virtiofsd_commit: ${{ steps.versions.outputs.virtiofsd_commit }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -59,18 +62,27 @@ jobs:
           FIRECRACKER_VERSION="$(cat firecracker/VERSION)"
           CLOUD_HYPERVISOR_VERSION="$(cat cloud-hypervisor/VERSION)"
           VIRTIOFSD_VERSION="$(cat virtiofsd/VERSION)"
+          QEMU_COMMIT="$(cat qemu/COMMIT)"
+          SOLO5_COMMIT="$(cat solo5/COMMIT)"
+          VIRTIOFSD_COMMIT="$(cat virtiofsd/COMMIT)"
           echo "release_series=$RELEASE_SERIES" >> $GITHUB_OUTPUT
           echo "qemu_version=$QEMU_VERSION" >> $GITHUB_OUTPUT
           echo "solo5_version=$SOLO5_VERSION" >> $GITHUB_OUTPUT
           echo "firecracker_version=$FIRECRACKER_VERSION" >> $GITHUB_OUTPUT
           echo "cloud-hypervisor_version=$CLOUD_HYPERVISOR_VERSION" >> $GITHUB_OUTPUT
           echo "virtiofsd_version=$VIRTIOFSD_VERSION" >> $GITHUB_OUTPUT
+          echo "qemu_commit=$QEMU_COMMIT" >> $GITHUB_OUTPUT
+          echo "solo5_commit=$SOLO5_COMMIT" >> $GITHUB_OUTPUT
+          echo "virtiofsd_commit=$VIRTIOFSD_COMMIT" >> $GITHUB_OUTPUT
           echo "$RELEASE_SERIES"
           echo "$QEMU_VERSION"
           echo "$SOLO5_VERSION"
           echo "$FIRECRACKER_VERSION"
           echo "$CLOUD_HYPERVISOR_VERSION"
           echo "$VIRTIOFSD_VERSION"
+          echo "$QEMU_COMMIT"
+          echo "$SOLO5_COMMIT"
+          echo "$VIRTIOFSD_COMMIT"
 
   check-release-existence:
     name: Check if release already exists
@@ -96,9 +108,9 @@ jobs:
       - name: Generate Qemu artifact name
         id: name
         run: |
-          QEMU_AMD64_CONFIG=$( sort qemu/amd64.config )
-          QEMU_ARM64_CONFIG=$( sort qemu/arm64.config )
-          QEMU_IGNORE_LIST=$( sort qemu/unnecessary_files.txt )
+          QEMU_AMD64_CONFIG=$( LC_ALL=C sort qemu/amd64.config )
+          QEMU_ARM64_CONFIG=$( LC_ALL=C sort qemu/arm64.config )
+          QEMU_IGNORE_LIST=$( LC_ALL=C sort qemu/unnecessary_files.txt )
           QEMU_FILES_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
           echo "hash=${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
           echo "full=qemu-amd64-${{ needs.get-versions.outputs.qemu_version }}-${QEMU_FILES_HASH}" >> $GITHUB_OUTPUT
@@ -187,6 +199,7 @@ jobs:
     uses: ./.github/workflows/qemu_build.yaml
     with:
       qemu_version: ${{ needs.get-versions.outputs.qemu_version }}
+      qemu_commit: ${{ needs.get-versions.outputs.qemu_commit }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -196,6 +209,7 @@ jobs:
     uses: ./.github/workflows/solo5_build.yaml
     with:
       solo5_version: ${{ needs.get-versions.outputs.solo5_version }}
+      solo5_commit: ${{ needs.get-versions.outputs.solo5_commit }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -205,6 +219,7 @@ jobs:
     uses: ./.github/workflows/virtiofsd_build.yaml
     with:
       virtiofsd_version: ${{ needs.get-versions.outputs.virtiofsd_version }}
+      virtiofsd_commit: ${{ needs.get-versions.outputs.virtiofsd_commit }}
       arch: '["amd64", "arm64"]'
     secrets: inherit
 
@@ -278,30 +293,76 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Firecracker amd64 binary
+        env:
+          VERSION: ${{ needs.get-versions.outputs.firecracker_version }}
         run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
           FC_RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases"
-          curl -L ${FC_RELEASE_URL}/download/${{ needs.get-versions.outputs.firecracker_version }}/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-x86_64.tgz | tar -xz
+          ASSET="firecracker-${VERSION}-x86_64.tgz"
+          curl -fL -O ${FC_RELEASE_URL}/download/${VERSION}/${ASSET}
+          curl -fL -O ${FC_RELEASE_URL}/download/${VERSION}/${ASSET}.sha256.txt
+          sha256sum -c ${ASSET}.sha256.txt
+          tar -xzf ${ASSET}
           mkdir /tmp/fc_amd64
-          mv release-${{ needs.get-versions.outputs.firecracker_version }}-x86_64/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-x86_64 /tmp/fc_amd64/firecracker
+          mv release-${VERSION}-x86_64/firecracker-${VERSION}-x86_64 /tmp/fc_amd64/firecracker
 
       - name: Download Firecracker arm64 binary
+        env:
+          VERSION: ${{ needs.get-versions.outputs.firecracker_version }}
         run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
           FC_RELEASE_URL="https://github.com/firecracker-microvm/firecracker/releases"
-          curl -L ${FC_RELEASE_URL}/download/${{ needs.get-versions.outputs.firecracker_version }}/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-aarch64.tgz | tar -xz
+          ASSET="firecracker-${VERSION}-aarch64.tgz"
+          curl -fL -O ${FC_RELEASE_URL}/download/${VERSION}/${ASSET}
+          curl -fL -O ${FC_RELEASE_URL}/download/${VERSION}/${ASSET}.sha256.txt
+          sha256sum -c ${ASSET}.sha256.txt
+          tar -xzf ${ASSET}
           mkdir /tmp/fc_arm64
-          mv release-${{ needs.get-versions.outputs.firecracker_version }}-aarch64/firecracker-${{ needs.get-versions.outputs.firecracker_version }}-aarch64 /tmp/fc_arm64/firecracker
+          mv release-${VERSION}-aarch64/firecracker-${VERSION}-aarch64 /tmp/fc_arm64/firecracker
 
       - name: Download Cloud-Hypervisor amd64 binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
         run: |
+          set -euo pipefail
           mkdir /tmp/clh_amd64
           CLH_RELEASE_URL=https://github.com/cloud-hypervisor/cloud-hypervisor/releases
-          curl -L -o /tmp/clh_amd64/cloud-hypervisor ${CLH_RELEASE_URL}/download/${{ needs.get-versions.outputs.cloud-hypervisor_version }}/cloud-hypervisor-static
+          ASSET=cloud-hypervisor-static
+          curl -fL -o /tmp/clh_amd64/cloud-hypervisor ${CLH_RELEASE_URL}/download/${VERSION}/${ASSET}
+          # Cloud-Hypervisor does not publish a checksum file, use the digest
+          # GitHub computed for the release asset instead
+          DIGEST=$(gh api "repos/cloud-hypervisor/cloud-hypervisor/releases/tags/${VERSION}" \
+                    --jq ".assets[] | select(.name == \"${ASSET}\") | .digest")
+          if [[ "$DIGEST" != sha256:* ]]
+          then
+            echo "::error::No sha256 digest found for ${ASSET} of Cloud-Hypervisor ${VERSION}"
+            exit 1
+          fi
+          echo "${DIGEST#sha256:}  /tmp/clh_amd64/cloud-hypervisor" | sha256sum -c -
 
       - name: Download Cloud-Hypervisor arm64 binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
         run: |
+          set -euo pipefail
           mkdir /tmp/clh_arm64
           CLH_RELEASE_URL=https://github.com/cloud-hypervisor/cloud-hypervisor/releases
-          curl -L -o /tmp/clh_arm64/cloud-hypervisor ${CLH_RELEASE_URL}/download/${{ needs.get-versions.outputs.cloud-hypervisor_version }}/cloud-hypervisor-static-aarch64
+          ASSET=cloud-hypervisor-static-aarch64
+          curl -fL -o /tmp/clh_arm64/cloud-hypervisor ${CLH_RELEASE_URL}/download/${VERSION}/${ASSET}
+          # Cloud-Hypervisor does not publish a checksum file, use the digest
+          # GitHub computed for the release asset instead
+          DIGEST=$(gh api "repos/cloud-hypervisor/cloud-hypervisor/releases/tags/${VERSION}" \
+                    --jq ".assets[] | select(.name == \"${ASSET}\") | .digest")
+          if [[ "$DIGEST" != sha256:* ]]
+          then
+            echo "::error::No sha256 digest found for ${ASSET} of Cloud-Hypervisor ${VERSION}"
+            exit 1
+          fi
+          echo "${DIGEST#sha256:}  /tmp/clh_arm64/cloud-hypervisor" | sha256sum -c -
 
       - name: Package all artifacts
         env:

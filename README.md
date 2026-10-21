@@ -25,7 +25,10 @@ Every user can request the build of any monitor version by opening a new Pull Re
 
 1. **Specify the monitor version to build**: The version of each monitor is
    specified in the `VERSION` file located in its respective directory (e.g.,
-   for Solo5, the version is in [solo5/VERSION](solo5/VERSION)).
+   for Solo5, the version is in [solo5/VERSION](solo5/VERSION)). For Qemu,
+   Solo5 and Virtiofsd, the `COMMIT` file in the same directory has to be
+   updated as well, with the full hash of the commit that the version's tag
+   points to (see [Source verification](#Source-verification)).
 2. **Open a new PR**: Create new PR with the version change.
 3. **PR workflow gets triggered**: Upon opening a new PR a workflow will check
    whether a) the requested versions of monitors have been built before and if
@@ -48,6 +51,26 @@ following configuration files:
   architectures.
 - [excluded files list](qemu/unnecessary_files.txt): the list with the excluded
   files from the final Qemu installation directory.
+
+## Source verification
+
+The monitors are either built from source or downloaded as prebuilt binaries
+from their upstream releases. In both cases, the workflows verify what they
+fetch and fail if the verification does not pass:
+
+- **Qemu, Solo5 and Virtiofsd** are built from a clone of the version's tag.
+  Since a tag can be moved, the workflow checks that the cloned tag points to
+  the commit in the respective `COMMIT` file (e.g.
+  [solo5/COMMIT](solo5/COMMIT)). To find the commit of a tag:
+  ```
+  git ls-remote --tags <repository> <version> <version>^{}
+  ```
+  For annotated tags (e.g. Qemu and Virtiofsd) the commit is the one of the
+  `^{}` line.
+- **Firecracker and Cloud-Hypervisor** are downloaded from their GitHub
+  releases and their sha256 is checked. For Firecracker, against the checksum
+  file of the release and for Cloud-Hypervisor, against the digest that GitHub
+  provides for the release asset.
 
 ## Release Versioning Scheme
 

@@ -8,6 +8,10 @@ on:
         type: string
         required: false
         default: 'v1.13.1'
+      virtiofsd_commit:
+        description: 'The commit that the Virtiofsd version tag must point to'
+        type: string
+        required: true
       arch:
         description: 'The CPU architecture to build Solo5'
         type: string
@@ -115,7 +119,15 @@ jobs:
             exit 1
           fi
 
-      - name: Fetch and build Virtiofsd
+      - name: Fetch Virtiofsd
+        uses: ./.github/actions/clone-verified/
+        with:
+          repository: https://gitlab.com/virtio-fs/virtiofsd.git
+          version: ${{ inputs.virtiofsd_version }}
+          commit: ${{ inputs.virtiofsd_commit }}
+          path: virtiofsd_source
+
+      - name: Build Virtiofsd
         uses: ./virtiofsd
         env:
           RUSTFLAGS: "-C target-feature=+crt-static -C link-self-contained=yes"
@@ -124,12 +136,10 @@ jobs:
           LIBCAPNG_LINK_TYPE: "static"
           LIBCAPNG_LIB_PATH: "/usr/lib"
           TARGET: ${{ steps.arch_map.outputs.target }}
-          VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version }}
         with:
           args: |
             set -eux
             rustup target add "$TARGET"
-            git clone -b "$VIRTIOFSD_VERSION" https://gitlab.com/virtio-fs/virtiofsd.git --depth=1 virtiofsd_source
             cd virtiofsd_source
             cargo build --release --target "$TARGET"
             cp target/"$TARGET"/release/virtiofsd /github/workspace/virtiofsd_static
