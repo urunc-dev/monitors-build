@@ -102,13 +102,13 @@ jobs:
           mv solo5_source/tenders/spt/solo5-spt solo5-spt-${{ matrix.arch }}
 
       - name: Archive Solo5-hvt artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: solo5-hvt-${{ matrix.arch }}
           path: solo5-hvt-${{ matrix.arch }}
 
       - name: Archive Solo5-spt artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: solo5-spt-${{ matrix.arch }}
           path: solo5-spt-${{ matrix.arch }}
