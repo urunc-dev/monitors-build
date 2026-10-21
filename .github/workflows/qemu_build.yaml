@@ -112,7 +112,7 @@ jobs:
           tar -C /tmp/qemu_build/opt -czf qemu-${{ matrix.arch }}.tar.gz .
 
       - name: Archive Qemu artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: qemu-${{ matrix.arch }}
           path: qemu-${{ matrix.arch }}.tar.gz
