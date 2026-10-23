@@ -114,3 +114,8 @@ e.g. `FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e-amd64.tar.gz`.
 
 Both tars contain a `urunc/` directory and Qemu expects to find its files under
 `/opt/urunc`. Therefore, they should be extracted with:
+
+```
+sudo tar -C /opt -xzf qemu-<arch>.tar.gz
+sudo tar -C /opt -xzf <monitors>-<arch>.tar.gz
+```
