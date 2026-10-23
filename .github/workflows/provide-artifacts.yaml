@@ -203,45 +203,6 @@ jobs:
             echo "release=${NEXT}" >> $GITHUB_OUTPUT
           fi
 
-  tag-parent: 
-    name: Tag Parent Repository
-    needs: [check-release-existence]
-    if: ${{ github.event_name == 'push' && 
-            needs.check-release-existence.outputs.exists == 'false' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
-        with:
-          egress-policy: audit
-
-      - name: Tag Parent Repository
-        uses: gntouts/tag-remote-repo-action@b3c9868dbb01f9ea3875289e783d1a2478b7ea88 # v1.0.0
-        id: tag_parent
-        with:
-          repository: ${{ github.repository }}
-          tag: ${{ needs.check-release-existence.outputs.release }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          skip_update: true
-
-      - name: Log outputs
-        env:
-          REPOSITORY: ${{ github.repository }}
-          VERSION: ${{steps.tag_parent.outputs.tag}}
-          RESULT: ${{ steps.tag_parent.outputs.result }}
-          MESSAGE: ${{ steps.tag_parent.outputs.message }}
-          TAG: ${{ steps.tag_parent.outputs.tag }}
-          COMMIT: ${{ steps.tag_parent.outputs.commit }}
-        run: |
-          echo "Repository: $REPOSITORY"
-          echo "Version: $VERSION"
-          echo "Result: $RESULT"
-          echo "Message: $MESSAGE"
-          echo "Tag: $TAG"
-          echo "Commit: $COMMIT"
-
   build-Qemu-artifacts:
     name: Check and build missing Qemu artifacts
     needs: [get-versions]
@@ -277,7 +238,7 @@ jobs:
 
   create-new-release:
     name: Create new release
-    needs: [get-versions,check-release-existence,tag-parent,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
+    needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
     if: ${{ github.event_name == 'push' && 
             needs.check-release-existence.outputs.exists == 'false' }}
     runs-on: ubuntu-latest
@@ -461,6 +422,8 @@ jobs:
           EOF
           cat release_notes.md
 
+      # The tag is created along with the release, at the merged commit.
+      # Hence, a failed build does not leave a tag behind
       - name: Create release
         uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7 # v2.3.4
         id: create_release
@@ -472,6 +435,7 @@ jobs:
           prerelease: true
           generate_release_notes: false
           tag_name: ${{ needs.check-release-existence.outputs.release }}
+          target_commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
