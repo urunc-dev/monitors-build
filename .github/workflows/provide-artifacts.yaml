@@ -80,7 +80,12 @@ jobs:
           QEMU_AMD64_CONFIG=$( LC_ALL=C sort qemu/amd64.config )
           QEMU_ARM64_CONFIG=$( LC_ALL=C sort qemu/arm64.config )
           QEMU_IGNORE_LIST=$( LC_ALL=C sort qemu/unnecessary_files.txt )
-          QEMU_HASH=$( echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
+          # The exclude list contains patterns like "*/bin/qemu-pr-helper".
+          # set -f stops the shell from replacing them with matching files of
+          # the current directory, which would change the hash.
+          # The variables stay unquoted on purpose: this joins all their
+          # lines with single spaces and keeps the hash of existing releases.
+          QEMU_HASH=$( set -f; echo $QEMU_AMD64_CONFIG $QEMU_ARM64_CONFIG $QEMU_IGNORE_LIST | md5sum | cut -d ' ' -f 1)
           # The monitors built from source are identified in release
           # descriptions by their version and a hash of everything that
           # defines their build: their directory (e.g. VERSION, COMMIT, Qemu

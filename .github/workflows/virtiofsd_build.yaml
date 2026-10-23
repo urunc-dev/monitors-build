@@ -17,7 +17,7 @@ on:
         type: string
         required: true
       arch:
-        description: 'The CPU architecture to build Solo5'
+        description: 'The CPU architecture to build Virtiofsd'
         type: string
         required: false
         default: '["amd64", "arm64"]'
