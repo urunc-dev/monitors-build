@@ -11,6 +11,7 @@ The following components are currently supported:
 - [**QEMU**](https://www.qemu.org/)
 - [**Firecracker**](https://firecracker-microvm.github.io/)
 - [**Cloud-Hypervisor**](https://www.cloudhypervisor.org/)
+- [**Hyperlight-Unikraft**](https://github.com/hyperlight-dev/hyperlight-unikraft) (`hluk`)
 - [**Solo5**](https://github.com/Solo5/solo5)
 - [**virtiofsd**](https://gitlab.com/virtio-fs/virtiofsd)
 
@@ -67,10 +68,11 @@ fetch and fail if the verification does not pass:
   ```
   For annotated tags (e.g. Qemu and Virtiofsd) the commit is the one of the
   `^{}` line.
-- **Firecracker and Cloud-Hypervisor** are downloaded from their GitHub
-  releases and their sha256 is checked. For Firecracker, against the checksum
-  file of the release and for Cloud-Hypervisor, against the digest that GitHub
-  provides for the release asset.
+- **Firecracker, Cloud-Hypervisor and Hyperlight-Unikraft** are downloaded
+  from their GitHub releases and their sha256 is checked. For Firecracker,
+  against the checksum file of the release, for Cloud-Hypervisor, against the
+  digest that GitHub provides for the release asset and for
+  Hyperlight-Unikraft, against the `SHA256SUMS` file of the release.
 
 ## Release Versioning Scheme
 
@@ -98,6 +100,7 @@ Each release contains the following artifacts for both `amd64` and `arm64`
 | --- | --- |
 | `firecracker-<arch>` | Firecracker static binary |
 | `cloud-hypervisor-<arch>` | Cloud-Hypervisor static binary |
+| `hluk-<arch>` | Hyperlight-Unikraft static binary |
 | `solo5-hvt-<arch>` | Solo5-hvt static binary |
 | `solo5-spt-<arch>` | Solo5-spt static binary |
 | `virtiofsd-<arch>` | Virtiofsd static binary |
@@ -107,10 +110,10 @@ Each release contains the following artifacts for both `amd64` and `arm64`
 `<monitors>` lists the versions of all monitors:
 
 ```
-FC-<firecracker_version>_CLH-<cloud-hypervisor-version>_S5-<solo5_version>_VFS-<virtiofsd_version>_QM-<qemu_version>-<qemu_config_and_exclude_files_hash>
+FC-<firecracker_version>_CLH-<cloud-hypervisor-version>_HLUK-<hyperlight-unikraft_version>_S5-<solo5_version>_VFS-<virtiofsd_version>_QM-<qemu_version>-<qemu_config_and_exclude_files_hash>
 ```
 
-e.g. `FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e-amd64.tar.gz`.
+e.g. `FC-v1.7.0_CLH-v50.0_HLUK-v0.18.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e-amd64.tar.gz`.
 
 Both tars contain a `urunc/` directory and Qemu expects to find its files under
 `/opt/urunc`. Therefore, they should be extracted with:
