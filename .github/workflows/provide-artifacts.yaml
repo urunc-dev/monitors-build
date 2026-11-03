@@ -10,6 +10,7 @@ on:
       - solo5/**
       - firecracker/**
       - cloud-hypervisor/**
+      - hyperlight-unikraft/**
       - virtiofsd/**
       # The workflows define how the monitors get built and released
       - .github/**
@@ -22,6 +23,7 @@ on:
       - solo5/**
       - firecracker/**
       - cloud-hypervisor/**
+      - hyperlight-unikraft/**
       - virtiofsd/**
       # The workflows define how the monitors get built and released
       - .github/**
@@ -40,6 +42,7 @@ jobs:
       solo5_version: ${{ steps.versions.outputs.solo5_version }}
       firecracker_version: ${{ steps.versions.outputs.firecracker_version }}
       cloud-hypervisor_version: ${{ steps.versions.outputs.cloud-hypervisor_version }}
+      hluk_version: ${{ steps.versions.outputs.hluk_version }}
       virtiofsd_version: ${{ steps.versions.outputs.virtiofsd_version }}
       qemu_commit: ${{ steps.versions.outputs.qemu_commit }}
       solo5_commit: ${{ steps.versions.outputs.solo5_commit }}
@@ -73,6 +76,7 @@ jobs:
           SOLO5_VERSION="$(cat solo5/VERSION)"
           FIRECRACKER_VERSION="$(cat firecracker/VERSION)"
           CLOUD_HYPERVISOR_VERSION="$(cat cloud-hypervisor/VERSION)"
+          HLUK_VERSION="$(cat hyperlight-unikraft/VERSION)"
           VIRTIOFSD_VERSION="$(cat virtiofsd/VERSION)"
           QEMU_COMMIT="$(cat qemu/COMMIT)"
           SOLO5_COMMIT="$(cat solo5/COMMIT)"
@@ -109,6 +113,7 @@ jobs:
           echo "solo5_version=$SOLO5_VERSION" >> $GITHUB_OUTPUT
           echo "firecracker_version=$FIRECRACKER_VERSION" >> $GITHUB_OUTPUT
           echo "cloud-hypervisor_version=$CLOUD_HYPERVISOR_VERSION" >> $GITHUB_OUTPUT
+          echo "hluk_version=$HLUK_VERSION" >> $GITHUB_OUTPUT
           echo "virtiofsd_version=$VIRTIOFSD_VERSION" >> $GITHUB_OUTPUT
           echo "qemu_commit=$QEMU_COMMIT" >> $GITHUB_OUTPUT
           echo "solo5_commit=$SOLO5_COMMIT" >> $GITHUB_OUTPUT
@@ -122,6 +127,7 @@ jobs:
           echo "$SOLO5_VERSION"
           echo "$FIRECRACKER_VERSION"
           echo "$CLOUD_HYPERVISOR_VERSION"
+          echo "$HLUK_VERSION"
           echo "$VIRTIOFSD_VERSION"
           echo "$QEMU_COMMIT"
           echo "$SOLO5_COMMIT"
@@ -155,10 +161,11 @@ jobs:
           SOLO5_VERSION: ${{ needs.get-versions.outputs.solo5_version }}
           FIRECRACKER_VERSION: ${{ needs.get-versions.outputs.firecracker_version }}
           CLOUD_HYPERVISOR_VERSION: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
+          HLUK_VERSION: ${{ needs.get-versions.outputs.hluk_version }}
           VIRTIOFSD_VERSION: ${{ needs.get-versions.outputs.virtiofsd_version }}
         run: |
           SHORT_HASH="${QEMU_HASH:0:5}"
-          echo "fingerprint=FC-${FIRECRACKER_VERSION}_CLH-${CLOUD_HYPERVISOR_VERSION}_S5-${SOLO5_VERSION}_VFS-${VIRTIOFSD_VERSION}_QM-${QEMU_VERSION}-${SHORT_HASH}" >> $GITHUB_OUTPUT
+          echo "fingerprint=FC-${FIRECRACKER_VERSION}_CLH-${CLOUD_HYPERVISOR_VERSION}_HLUK-${HLUK_VERSION}_S5-${SOLO5_VERSION}_VFS-${VIRTIOFSD_VERSION}_QM-${QEMU_VERSION}-${SHORT_HASH}" >> $GITHUB_OUTPUT
 
       - name: Check if release exists
         id: check
@@ -363,6 +370,34 @@ jobs:
           fi
           echo "${DIGEST#sha256:}  /tmp/clh_arm64/cloud-hypervisor" | sha256sum -c -
 
+      - name: Download Hyperlight-Unikraft amd64 binary
+        env:
+          VERSION: ${{ needs.get-versions.outputs.hluk_version }}
+        run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
+          HLUK_RELEASE_URL=https://github.com/hyperlight-dev/hyperlight-unikraft/releases
+          ASSET="hluk-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fL -O ${HLUK_RELEASE_URL}/download/${VERSION}/${ASSET}
+          curl -fL -O ${HLUK_RELEASE_URL}/download/${VERSION}/SHA256SUMS
+          grep " ${ASSET}\$" SHA256SUMS | sha256sum -c -
+          mkdir /tmp/hluk_amd64
+          tar -xzf ${ASSET} -C /tmp/hluk_amd64 hluk
+
+      - name: Download Hyperlight-Unikraft arm64 binary
+        env:
+          VERSION: ${{ needs.get-versions.outputs.hluk_version }}
+        run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
+          HLUK_RELEASE_URL=https://github.com/hyperlight-dev/hyperlight-unikraft/releases
+          ASSET="hluk-${VERSION}-aarch64-unknown-linux-musl.tar.gz"
+          curl -fL -O ${HLUK_RELEASE_URL}/download/${VERSION}/${ASSET}
+          curl -fL -O ${HLUK_RELEASE_URL}/download/${VERSION}/SHA256SUMS
+          grep " ${ASSET}\$" SHA256SUMS | sha256sum -c -
+          mkdir /tmp/hluk_arm64
+          tar -xzf ${ASSET} -C /tmp/hluk_arm64 hluk
+
       - name: Package all artifacts
         env:
           RELEASE: ${{ needs.check-release-existence.outputs.release }}
@@ -372,6 +407,7 @@ jobs:
           SOLO5_VERSION: ${{ needs.get-versions.outputs.solo5_version }}
           FIRECRACKER_VERSION: ${{ needs.get-versions.outputs.firecracker_version }}
           CLOUD_HYPERVISOR_VERSION: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
+          HLUK_VERSION: ${{ needs.get-versions.outputs.hluk_version }}
           VIRTIOFSD_VERSION: ${{ needs.get-versions.outputs.virtiofsd_version }}
           QEMU_BUILD_ID: ${{ needs.get-versions.outputs.qemu_build_id }}
           SOLO5_BUILD_ID: ${{ needs.get-versions.outputs.solo5_build_id }}
@@ -385,6 +421,7 @@ jobs:
             # Artifacts do not preserve the file permissions
             install -m 755 /tmp/fc_${arch}/firecracker release/firecracker-${arch}
             install -m 755 /tmp/clh_${arch}/cloud-hypervisor release/cloud-hypervisor-${arch}
+            install -m 755 /tmp/hluk_${arch}/hluk release/hluk-${arch}
             install -m 755 /tmp/monitors/solo5-hvt-${arch} release/solo5-hvt-${arch}
             install -m 755 /tmp/monitors/solo5-spt-${arch} release/solo5-spt-${arch}
             install -m 755 /tmp/monitors/virtiofsd-${arch} release/virtiofsd-${arch}
@@ -395,6 +432,7 @@ jobs:
             tar -C "$BUNDLE" -xzf release/qemu-${arch}.tar.gz
             install -m 755 release/firecracker-${arch} "$BUNDLE"/urunc/bin/firecracker
             install -m 755 release/cloud-hypervisor-${arch} "$BUNDLE"/urunc/bin/cloud-hypervisor
+            install -m 755 release/hluk-${arch} "$BUNDLE"/urunc/bin/hluk
             install -m 755 release/solo5-hvt-${arch} "$BUNDLE"/urunc/bin/solo5-hvt
             install -m 755 release/solo5-spt-${arch} "$BUNDLE"/urunc/bin/solo5-spt
             install -m 755 release/virtiofsd-${arch} "$BUNDLE"/urunc/bin/virtiofsd
@@ -408,10 +446,11 @@ jobs:
           - Solo5(hvt and spt): ${SOLO5_VERSION}
           - Firecracker: ${FIRECRACKER_VERSION}
           - Cloud-Hypervisor: ${CLOUD_HYPERVISOR_VERSION}
+          - Hyperlight-Unikraft (hluk): ${HLUK_VERSION}
           - Virtiofsd: ${VIRTIOFSD_VERSION}
 
           Artifacts (\`<arch>\` is \`amd64\` or \`arm64\`):
-          - \`firecracker-<arch>\`, \`cloud-hypervisor-<arch>\`, \`solo5-hvt-<arch>\`, \`solo5-spt-<arch>\`, \`virtiofsd-<arch>\`: static binaries
+          - \`firecracker-<arch>\`, \`cloud-hypervisor-<arch>\`, \`hluk-<arch>\`, \`solo5-hvt-<arch>\`, \`solo5-spt-<arch>\`, \`virtiofsd-<arch>\`: static binaries
           - \`qemu-<arch>.tar.gz\`: Qemu binary and its firmware files. Extract with \`tar -C /opt -xzf qemu-<arch>.tar.gz\`
           - \`${FINGERPRINT}-<arch>.tar.gz\`: All of the above. Extract with \`tar -C /opt -xzf ${FINGERPRINT}-<arch>.tar.gz\`
 
@@ -463,6 +502,7 @@ jobs:
           VIRTIOFSD_RELEASE: ${{ needs.build-Virtiofsd-artifacts.outputs.release }}
           FIRECRACKER_VERSION: ${{ needs.get-versions.outputs.firecracker_version }}
           CLOUD_HYPERVISOR_VERSION: ${{ needs.get-versions.outputs.cloud-hypervisor_version }}
+          HLUK_VERSION: ${{ needs.get-versions.outputs.hluk_version }}
           RELEASE: ${{ needs.check-release-existence.outputs.release }}
         run: |
           # Monitors that were not found in a release were built in this run
@@ -482,11 +522,14 @@ jobs:
           FC_LINK="${FC_RELEASE_URL}/tag/${FIRECRACKER_VERSION}"
           CLH_RELEASE_URL=https://github.com/cloud-hypervisor/cloud-hypervisor/releases
           CLH_LINK="${CLH_RELEASE_URL}/tag/${CLOUD_HYPERVISOR_VERSION}"
+          HLUK_RELEASE_URL=https://github.com/hyperlight-dev/hyperlight-unikraft/releases
+          HLUK_LINK="${HLUK_RELEASE_URL}/tag/${HLUK_VERSION}"
           echo "qemu=${QEMU_LINK}" >> $GITHUB_OUTPUT
           echo "solo5=${SOLO5_LINK}" >> $GITHUB_OUTPUT
           echo "virtiofsd=${VIRTIOFSD_LINK}" >> $GITHUB_OUTPUT
           echo "firecracker=${FC_LINK}" >> $GITHUB_OUTPUT
           echo "cloud-hypervisor=${CLH_LINK}" >> $GITHUB_OUTPUT
+          echo "hluk=${HLUK_LINK}" >> $GITHUB_OUTPUT
           if ${{ needs.check-release-existence.outputs.exists == 'false' }}
           then
             echo "release=" >> $GITHUB_OUTPUT
@@ -502,6 +545,7 @@ jobs:
           VFS_TEXT: "Virtiofsd ${{ needs.get-versions.outputs.virtiofsd_build_id }}: ${{ steps.links.outputs.virtiofsd }}"
           FC_TEXT: "Firecracker ${{ needs.get-versions.outputs.firecracker_version }}: ${{ steps.links.outputs.firecracker }}"
           CLH_TEXT: "Cloud-Hypervisor ${{ needs.get-versions.outputs.cloud-hypervisor_version }}: ${{ steps.links.outputs.cloud-hypervisor }}"
+          HLUK_TEXT: "Hyperlight-Unikraft ${{ needs.get-versions.outputs.hluk_version }}: ${{ steps.links.outputs.hluk }}"
         with:
           script: |
             const body = `
@@ -511,6 +555,7 @@ jobs:
             - ${process.env.VFS_TEXT}
             - ${process.env.FC_TEXT}
             - ${process.env.CLH_TEXT}
+            - ${process.env.HLUK_TEXT}
 
             `;
             await github.rest.issues.createComment({
