@@ -34,7 +34,7 @@ on:
 jobs:
   find-cached-release:
     name: Find a release with the same Virtiofsd build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release: ${{ steps.find.outputs.release }}
     steps:

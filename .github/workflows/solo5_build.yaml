@@ -25,7 +25,7 @@ on:
         description: 'Mapping of CPU architecture to runner names'
         type: string
         required: false
-        default: '{"amd64":"ubuntu-22.04", "arm64":"ubuntu-22.04-arm"}'
+        default: '{"amd64":"ubuntu-24.04", "arm64":"ubuntu-24.04-arm"}'
     outputs:
       release:
         description: 'The release that already contains this Solo5 build, empty if it was built in this run'
@@ -34,7 +34,7 @@ on:
 jobs:
   find-cached-release:
     name: Find a release with the same Solo5 build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release: ${{ steps.find.outputs.release }}
     steps:

@@ -35,7 +35,7 @@ permissions:
 jobs:
   get-versions:
     name: Get the versions of all artifacts from their respeective VERSION files
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_series: ${{ steps.versions.outputs.release_series }}
       qemu_version: ${{ steps.versions.outputs.qemu_version }}
@@ -139,7 +139,7 @@ jobs:
   check-release-existence:
     name: Check if release already exists
     needs: [get-versions]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs: 
       release: ${{ steps.check.outputs.release }}
       fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
@@ -248,7 +248,7 @@ jobs:
     needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
     if: ${{ github.event_name == 'push' && 
             needs.check-release-existence.outputs.exists == 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -483,7 +483,7 @@ jobs:
     needs: [get-versions,check-release-existence,build-Qemu-artifacts,build-Solo5-artifacts,build-Virtiofsd-artifacts]
     if: ${{ github.event_name == 'pull_request' && 
             needs.check-release-existence.outputs.exists == 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
       pull-requests: write
